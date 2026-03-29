@@ -1,0 +1,46 @@
+# configs/isic_qat.yaml
+# Quantization-Aware Training for ISIC classification → INT8 TFLite export
+
+task: classification
+dataset: isic
+seed: 42
+
+data:
+  root: data/isic/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: false     # no augmentation for QAT fine-tuning
+
+model:
+  name: efficientnetb0
+  num_classes: 1
+  pretrained: false
+  checkpoint: outputs/isic_baseline/best_model.keras  # start from trained baseline
+
+compression:
+  method: qat
+  quantize_layers: all    # or list specific layer names for mixed-precision
+  per_channel: true       # per-channel quantization (better accuracy than per-tensor)
+
+training:
+  epochs: 10              # short fine-tuning after QAT wrapping
+  optimizer: adam
+  learning_rate: 1.0e-5  # lower LR for fine-tuning
+  lr_schedule: constant
+  loss: binary_crossentropy
+
+export:
+  tflite:
+    enabled: true
+    precision: int8        # options: int8, fp16, fp32
+    calibration_samples: 200
+  onnx:
+    enabled: false
+
+output:
+  dir: outputs/isic_qat/
+  tflite_path: outputs/isic_qat_int8.tflite
+  log_wandb: true
+  wandb_project: medcompress

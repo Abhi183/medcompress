@@ -1,0 +1,50 @@
+# configs/isic_kd.yaml
+# Knowledge Distillation: EfficientNetB3 teacher → MobileNetV3Small student
+
+task: classification
+dataset: isic
+seed: 42
+
+data:
+  root: data/isic/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+teacher:
+  name: efficientnetb3
+  checkpoint: outputs/isic_teacher/best_model.keras
+  frozen: true            # teacher weights are not updated
+
+student:
+  name: mobilenetv3small
+  num_classes: 1
+  pretrained: imagenet
+  dropout: 0.2
+
+distillation:
+  temperature: 4.0        # softens teacher distribution
+  alpha: 0.7              # weight for distillation loss (1-alpha = hard label weight)
+  loss: kl_divergence     # KL divergence between teacher/student soft outputs
+  feature_distillation: false  # set true to also match intermediate feature maps
+
+training:
+  epochs: 40
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  class_weight: auto
+
+export:
+  tflite:
+    enabled: true
+    precision: fp16
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/isic_kd/
+  log_wandb: true
+  wandb_project: medcompress

@@ -1,0 +1,35 @@
+# configs/isic_baseline.yaml
+# Baseline EfficientNetB0 on ISIC 2020 melanoma classification
+
+task: classification
+dataset: isic
+seed: 42
+
+data:
+  root: data/isic/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+model:
+  name: efficientnetb0
+  num_classes: 1          # binary: melanoma vs. benign
+  pretrained: imagenet
+  dropout: 0.3
+
+training:
+  epochs: 30
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: binary_crossentropy
+  class_weight: auto      # handles class imbalance automatically
+  early_stopping_patience: 7
+
+output:
+  dir: outputs/isic_baseline/
+  save_best: true
+  log_wandb: true
+  wandb_project: medcompress

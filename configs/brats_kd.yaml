@@ -1,0 +1,55 @@
+# configs/brats_kd.yaml
+# 2.5D U-Net segmentation on BraTS 2021 with Knowledge Distillation
+
+task: segmentation
+dataset: brats
+seed: 42
+
+data:
+  root: data/brats/BraTS2021_Training_Data/
+  modalities: [t1, t1ce, t2, flair]   # all 4 MRI modalities as channels
+  image_size: 240
+  patch_size: 128
+  batch_size: 8
+  val_split: 0.15
+  test_split: 0.15
+  n_slices: 3             # 2.5D: stack N adjacent axial slices as extra channels
+
+teacher:
+  name: unet_full         # full-resolution U-Net (4 encoder stages, 64→512 filters)
+  checkpoint: outputs/brats_teacher/best_model.keras
+  frozen: true
+
+student:
+  name: unet_lite         # lightweight U-Net (3 encoder stages, 32→256 filters)
+  num_classes: 4          # BraTS labels: background, NCR, ED, ET
+  pretrained: false
+
+distillation:
+  temperature: 3.0
+  alpha: 0.6
+  loss: kl_divergence
+  feature_distillation: true
+  feature_layers:
+    - encoder_block2_output   # match intermediate feature maps
+    - bottleneck_output
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine_restarts
+  loss: dice_ce            # Dice + CrossEntropy combo for segmentation
+
+export:
+  tflite:
+    enabled: true
+    precision: int8
+    calibration_samples: 100
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/brats_kd/
+  log_wandb: true
+  wandb_project: medcompress
