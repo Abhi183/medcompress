@@ -6,11 +6,6 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![TensorFlow 2.x](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://www.tensorflow.org/)
 
-This repository accompanies the paper:
-
-> **"Compressing Medical Imaging Models for Mobile and WebAssembly Endpoints:
-> A Survey of Neural Architecture Search, Quantization, and Knowledge Distillation"**
-> *[Author], [Institution], [Year]*
 
 ---
 
