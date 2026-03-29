@@ -88,36 +88,6 @@ python scripts/compress.py --config configs/isic_qat.yaml --export tflite
 python scripts/evaluate.py --config configs/isic_qat.yaml
 python scripts/benchmark.py --model outputs/isic_qat_int8.tflite
 ```
-
----
-
-## 📊 Reproducible Results
-
-All results are logged via [Weights & Biases](https://wandb.ai) when `WANDB_API_KEY` is set.
-Pre-trained checkpoints are available at: `[Zenodo / HuggingFace Hub link]`
-
-| Task | Model | Method | AUC / Dice | Size (MB) | TFLite Latency (ms)* |
-|------|-------|--------|-----------|-----------|----------------------|
-| ISIC | EfficientNetB0 | Baseline FP32 | 0.921 AUC | 20.3 | 312 |
-| ISIC | EfficientNetB0 | QAT INT8 | 0.917 AUC | 5.2 | 84 |
-| ISIC | MobileNetV3 | KD (teacher: EffB3) | 0.912 AUC | 4.1 | 61 |
-| BraTS | 2.5D U-Net | Baseline FP32 | 0.847 Dice | 31.4 | 891 |
-| BraTS | 2.5D U-Net | QAT INT8 | 0.841 Dice | 8.1 | 241 |
-| BraTS | Lite U-Net | KD (teacher: nnUNet) | 0.839 Dice | 6.3 | 198 |
-
-*Measured on Pixel 6 (Android) via TFLite benchmark tool.
-
----
-
-## 📄 Citation
-
-If you use this code in your research, please cite:
-```bibtex
-@article{author2024medcompress,
-  title={Compressing Medical Imaging Models for Mobile and WebAssembly Endpoints},
-  author={[Author]},
-  journal={[Venue]},
-  year={2024}
 }
 ```
 
