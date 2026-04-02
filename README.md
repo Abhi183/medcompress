@@ -91,5 +91,3 @@ python scripts/benchmark.py --model outputs/isic_qat_int8.tflite
 }
 ```
 
-## 📜 License
-MIT License. See [LICENSE](LICENSE).
