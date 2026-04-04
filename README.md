@@ -47,6 +47,17 @@ medcompress/
 │   ├── sparse_attention_ablation.csv
 │   ├── distillation_ablation.csv
 │   └── endpoint_profiling.csv
+├── deploy/
+│   ├── app.py                 # Desktop GUI (tkinter, cross-platform)
+│   ├── cli.py                 # CLI for single/batch inference
+│   └── inference.py           # Core inference engine (TFLite + ONNX)
+├── figures/
+│   ├── generate_figures.py    # Script to regenerate all paper figures
+│   ├── fig1_compression_pareto.png
+│   ├── fig2_sparse_attention_ablation.png
+│   ├── fig3_distillation_ablation.png
+│   ├── fig4_endpoint_latency.png
+│   └── fig5_model_size.png
 ├── tests/
 │   ├── test_pipeline.py       # Core ML pipeline tests
 │   └── test_sparse_attention.py  # Sparse attention tests
@@ -88,6 +99,50 @@ The sparse attention module (`compression/sparse_attention.py`) adapts technique
 - **Decoupled router** uses separate Q/K projections trained with InfoNCE loss
 
 Kernel=4, top-k=8 achieves 24.5x attention memory reduction with 0.7% AUC loss on ISIC classification.
+
+## Deploy on Mac / Windows / Linux
+
+MedCompress includes a ready-to-use desktop application and CLI for running compressed models on any endpoint. No GPU required.
+
+**GUI (desktop app):**
+```bash
+pip install pillow numpy
+# For TFLite models:
+pip install tflite-runtime  # or tensorflow
+# For ONNX models:
+pip install onnxruntime
+
+python deploy/app.py --model path/to/model.tflite
+```
+
+**CLI (single image):**
+```bash
+python deploy/cli.py --model model.tflite --image skin_lesion.jpg
+# Output: Prediction: Melanoma (confidence: 87.3%), Inference: 9.2 ms
+```
+
+**CLI (batch processing):**
+```bash
+python deploy/cli.py --model model.tflite --dir /path/to/images/ --output results.json
+```
+
+**CLI (benchmark):**
+```bash
+python deploy/cli.py --model model.tflite --image scan.jpg --benchmark
+# Output: Median: 8.3 ms, P95: 9.7 ms (50 runs)
+```
+
+The deployment engine supports both `.tflite` and `.onnx` models, auto-detects whether the model is for classification or segmentation, and handles INT8 quantized inputs/outputs transparently.
+
+### Packaging as a Standalone App
+
+To distribute as a standalone binary (no Python required on the target machine):
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed deploy/app.py --name MedCompress
+# Produces dist/MedCompress.app (macOS) or dist/MedCompress.exe (Windows)
+```
 
 ## Citation
 
