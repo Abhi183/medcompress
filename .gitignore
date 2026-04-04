@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+outputs/
+*.egg-info/
+dist/
+build/
+.env
+*.tflite
+*.onnx
+*.h5
+*.keras
+wandb/
+.claude/

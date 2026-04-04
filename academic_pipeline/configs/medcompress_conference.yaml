@@ -1,0 +1,41 @@
+# MedCompress Conference Paper Configuration
+# Shorter format for MICCAI, ISBI, or similar venues
+
+title: "Lightweight Medical Image Analysis via Quantization and Distillation for Edge Deployment"
+task: both
+research_topic: >
+  Compressing medical imaging models through quantization-aware training
+  and knowledge distillation for real-time inference on mobile devices
+  and WebAssembly runtimes. Evaluated on ISIC melanoma classification
+  and BraTS brain tumor segmentation.
+
+research_mode: quick
+paper_type: conference
+citation_format: ieee
+target_journal: "MICCAI 2026"
+word_count_target: 4000
+
+output_formats:
+  - markdown
+  - latex
+output_dir: outputs/conference_paper
+
+enable_stop_slop: true
+enable_style_calibration: false
+
+compression_methods:
+  - qat
+  - kd
+  - msa  # MSA-inspired Sparse Attention
+datasets:
+  - isic
+  - brats
+
+max_revision_rounds: 1
+max_integrity_retries: 2
+
+research_keywords:
+  - medical image compression edge
+  - quantization clinical deployment
+  - knowledge distillation segmentation
+  - lightweight medical AI

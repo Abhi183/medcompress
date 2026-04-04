@@ -1,0 +1,69 @@
+# MedCompress Academic Paper Pipeline Configuration
+# Full IMRaD paper on medical imaging model compression
+
+title: "MedCompress: Efficient Compression of Medical Imaging Models via Quantization, Distillation, and Sparse Attention for Edge Deployment"
+task: both  # classification | segmentation | both
+research_topic: >
+  Model compression techniques (quantization-aware training, knowledge
+  distillation, and MSA-inspired sparse attention compression) for medical
+  imaging deep learning models targeting mobile and WebAssembly deployment
+  endpoints, with evaluation on ISIC 2020 melanoma classification and BraTS
+  2021 brain tumor segmentation benchmarks. Incorporates Memory Sparse
+  Attention (Chen et al., 2026) techniques — KV cache pooling and top-k
+  sparse routing — adapted for Vision Transformer attention layers in
+  medical imaging models.
+
+# Research phase
+research_mode: full  # full | quick | socratic
+
+# Paper structure
+paper_type: imrad  # imrad | conference | literature_review
+citation_format: ieee  # ieee | apa7 | vancouver
+target_journal: "IEEE Journal of Biomedical and Health Informatics"
+word_count_target: 8000
+
+# Output
+output_formats:
+  - markdown
+  - latex
+  - pdf
+output_dir: outputs/paper
+
+# Quality controls
+enable_stop_slop: true
+enable_style_calibration: false
+
+# MedCompress-specific
+compression_methods:
+  - qat       # Quantization-Aware Training
+  - kd        # Knowledge Distillation
+  - msa       # MSA-inspired Sparse Attention Compression
+datasets:
+  - isic      # ISIC 2020 melanoma classification
+  - brats     # BraTS 2021 brain tumor segmentation
+
+# Pipeline limits
+max_revision_rounds: 2
+max_integrity_retries: 3
+
+# Research keywords for literature search
+research_keywords:
+  - medical image compression
+  - quantization-aware training healthcare
+  - knowledge distillation medical imaging
+  - sparse attention medical imaging
+  - memory sparse attention compression
+  - KV cache pooling vision transformer
+  - TFLite medical deployment
+  - mobile health deep learning
+  - model pruning clinical AI
+  - edge computing medical imaging
+  - ONNX runtime healthcare
+  - top-k routing attention compression
+
+# Domain-specific quality thresholds
+quality_gate:
+  min_word_count: 5000
+  max_slop_warnings: 8
+  min_burstiness: 0.35
+  min_references: 25
