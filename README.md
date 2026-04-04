@@ -1,12 +1,20 @@
 # MedCompress
 
-**Compressing medical imaging models for cross-platform endpoint deployment.**
+**A benchmark for the compression and cross-platform deployment of medical imaging models on CPU endpoints.**
 
-MedCompress is a compression benchmark for medical imaging deep learning models. It evaluates quantization-aware training (QAT), knowledge distillation (KD), and sparse attention compression on melanoma classification (ISIC 2020) and brain tumor segmentation (BraTS 2021), with export to TFLite and ONNX for CPU inference on macOS, Windows, and Linux endpoints.
+MedCompress evaluates quantization-aware training (QAT), knowledge distillation (KD), and 2D sparse attention compression on melanoma classification (ISIC 2020) and brain tumor segmentation (BraTS 2021), with export to TFLite and ONNX for CPU inference on macOS, Windows, and Linux.
 
 **Paper:** [paper/medcompress.pdf](paper/medcompress.pdf) (LaTeX source: [paper/medcompress.tex](paper/medcompress.tex))
 
 **Author:** Abhishek Shekhar
+
+---
+
+## Desktop Application
+
+![MedCompress Desktop App](screenshots/app_demo.png)
+
+The MedCompress desktop app runs compressed medical imaging models locally on any Mac, Windows, or Linux machine. No GPU, no cloud, no internet required. Load a TFLite or ONNX model, open a dermoscopy or MRI image, and get a classification or segmentation result in under 10 ms on CPU.
 
 ---
 

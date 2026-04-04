@@ -307,18 +307,19 @@ Table~\ref{tab:qat} presents QAT results. INT8 achieves $3.8$--$3.9{\times}$ com
 \centering
 \caption{QAT results (mean $\pm$ std, 5 seeds).}
 \label{tab:qat}
-\small
-\begin{tabular}{@{}llrrccc@{}}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llrrlll@{}}
 \toprule
 Model & Fmt & MB & $\times$ & Primary & Sens. & F1 \\
 \midrule
-EffNetB0 & FP32 & 16.2 & 1.0 & .912\tiny$\pm$.004 & .741\tiny$\pm$.018 & .623\tiny$\pm$.021 \\
-EffNetB0 & INT8 & 4.3 & 3.8 & .897\tiny$\pm$.005 & .718\tiny$\pm$.022 & .598\tiny$\pm$.024 \\
-EffNetB0 & FP16 & 8.1 & 2.0 & .910\tiny$\pm$.004 & .736\tiny$\pm$.019 & .618\tiny$\pm$.022 \\
+EffNetB0 & FP32 & 16.2 & 1.0 & .912{\scriptsize$\pm$}.004 & .741{\scriptsize$\pm$}.018 & .623{\scriptsize$\pm$}.021 \\
+EffNetB0 & INT8 & 4.3 & 3.8 & .897{\scriptsize$\pm$}.005 & .718{\scriptsize$\pm$}.022 & .598{\scriptsize$\pm$}.024 \\
+EffNetB0 & FP16 & 8.1 & 2.0 & .910{\scriptsize$\pm$}.004 & .736{\scriptsize$\pm$}.019 & .618{\scriptsize$\pm$}.022 \\
 \midrule
-U-Net & FP32 & 124.1 & 1.0 & .871\tiny$\pm$.008 & .852\tiny$\pm$.012 & .863\tiny$\pm$.010 \\
-U-Net & INT8 & 31.4 & 3.9 & .849\tiny$\pm$.010 & .831\tiny$\pm$.015 & .841\tiny$\pm$.013 \\
-U-Net & FP16 & 62.1 & 2.0 & .868\tiny$\pm$.009 & .849\tiny$\pm$.013 & .860\tiny$\pm$.011 \\
+U-Net & FP32 & 124.1 & 1.0 & .871{\scriptsize$\pm$}.008 & .852{\scriptsize$\pm$}.012 & .863{\scriptsize$\pm$}.010 \\
+U-Net & INT8 & 31.4 & 3.9 & .849{\scriptsize$\pm$}.010 & .831{\scriptsize$\pm$}.015 & .841{\scriptsize$\pm$}.013 \\
+U-Net & FP16 & 62.1 & 2.0 & .868{\scriptsize$\pm$}.009 & .849{\scriptsize$\pm$}.013 & .860{\scriptsize$\pm$}.011 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -370,14 +371,14 @@ The advantage of 2D pooling is structural. A 1D kernel of size 4 groups four con
 \toprule
 Pool & Kernel & Tokens & Red. & AUC & $\Delta$ \\
 \midrule
-None & --- & 196 & 1.0$\times$ & .912\tiny$\pm$.004 & --- \\
+None & --- & 196 & 1.0$\times$ & .912{\scriptsize$\pm$}.004 & --- \\
 \midrule
-1D & 4 & 49 & 4.0$\times$ & .905\tiny$\pm$.005 & $-$0.77\% \\
-1D & 8 & 25 & 7.8$\times$ & .893\tiny$\pm$.007 & $-$2.08\% \\
+1D & 4 & 49 & 4.0$\times$ & .905{\scriptsize$\pm$}.005 & $-$0.77\% \\
+1D & 8 & 25 & 7.8$\times$ & .893{\scriptsize$\pm$}.007 & $-$2.08\% \\
 \midrule
-2D & 2$\times$2 & 49 & 4.0$\times$ & .909\tiny$\pm$.004 & $-$0.33\% \\
-2D & 4$\times$4 & 16 & 12.3$\times$ & .901\tiny$\pm$.006 & $-$1.21\% \\
-2D & 7$\times$7 & 4 & 49.0$\times$ & .862\tiny$\pm$.011 & $-$5.48\% \\
+2D & 2$\times$2 & 49 & 4.0$\times$ & .909{\scriptsize$\pm$}.004 & $-$0.33\% \\
+2D & 4$\times$4 & 16 & 12.3$\times$ & .901{\scriptsize$\pm$}.006 & $-$1.21\% \\
+2D & 7$\times$7 & 4 & 49.0$\times$ & .862{\scriptsize$\pm$}.011 & $-$5.48\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -404,22 +405,23 @@ Figure~\ref{fig:pareto} and Table~\ref{tab:combined} present the full Pareto ana
 \centering
 \caption{Combined compression pipeline (mean $\pm$ std, 5 seeds). Latency is median CPU ms.}
 \label{tab:combined}
-\small
-\begin{tabular}{@{}llrrcc@{}}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llrrll@{}}
 \toprule
-Pipeline & Task & MB & ms & Metric & F1 \\
+Pipeline & Task & MB & ms & Primary & F1 \\
 \midrule
-Baseline & ISIC & 16.2 & 48.3 & .912\tiny$\pm$.004 & .623\tiny$\pm$.021 \\
-QAT INT8 & ISIC & 4.3 & 14.1 & .897\tiny$\pm$.005 & .598\tiny$\pm$.024 \\
-Scratch & ISIC & 10.2 & 22.7 & .871\tiny$\pm$.007 & .561\tiny$\pm$.028 \\
-KD & ISIC & 10.2 & 22.7 & .896\tiny$\pm$.005 & .601\tiny$\pm$.023 \\
-KD+QAT & ISIC & 2.7 & 8.3 & .883\tiny$\pm$.006 & .582\tiny$\pm$.026 \\
+Baseline & ISIC & 16.2 & 48.3 & .912{\scriptsize$\pm$.004} & .623{\scriptsize$\pm$.021} \\
+QAT INT8 & ISIC & 4.3 & 14.1 & .897{\scriptsize$\pm$.005} & .598{\scriptsize$\pm$.024} \\
+Scratch & ISIC & 10.2 & 22.7 & .871{\scriptsize$\pm$.007} & .561{\scriptsize$\pm$.028} \\
+KD & ISIC & 10.2 & 22.7 & .896{\scriptsize$\pm$.005} & .601{\scriptsize$\pm$.023} \\
+KD+QAT & ISIC & 2.7 & 8.3 & .883{\scriptsize$\pm$.006} & .582{\scriptsize$\pm$.026} \\
 \midrule
-Baseline & BraTS & 124.1 & 312.5 & .871\tiny$\pm$.008 & .863\tiny$\pm$.010 \\
-QAT INT8 & BraTS & 31.4 & 89.2 & .849\tiny$\pm$.010 & .841\tiny$\pm$.013 \\
-Scratch & BraTS & 15.6 & 41.8 & .793\tiny$\pm$.012 & .789\tiny$\pm$.016 \\
-KD & BraTS & 15.6 & 41.8 & .821\tiny$\pm$.009 & .814\tiny$\pm$.012 \\
-KD+QAT & BraTS & 4.1 & 12.6 & .804\tiny$\pm$.011 & .797\tiny$\pm$.014 \\
+Baseline & BraTS & 124.1 & 312 & .871{\scriptsize$\pm$.008} & .863{\scriptsize$\pm$.010} \\
+QAT INT8 & BraTS & 31.4 & 89.2 & .849{\scriptsize$\pm$.010} & .841{\scriptsize$\pm$.013} \\
+Scratch & BraTS & 15.6 & 41.8 & .793{\scriptsize$\pm$.012} & .789{\scriptsize$\pm$.016} \\
+KD & BraTS & 15.6 & 41.8 & .821{\scriptsize$\pm$.009} & .814{\scriptsize$\pm$.012} \\
+KD+QAT & BraTS & 4.1 & 12.6 & .804{\scriptsize$\pm$.011} & .797{\scriptsize$\pm$.014} \\
 \bottomrule
 \end{tabular}
 \end{table}
