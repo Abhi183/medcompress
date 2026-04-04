@@ -1,4 +1,4 @@
-# MedCompress: Compressing Medical Imaging Models for Cross-Platform Endpoint Deployment
+# MedCompress: Compressing Medical Imaging Models for Endpoint Deployment on Mac and Windows
 
 **Abhishek Shekhar**
 
@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Most deep learning models for medical image analysis assume GPU-accelerated inference. They ship as 50-120 MB binaries that choke on the CPUs of the clinic workstations, field laptops, and telemedicine terminals where they would be most useful. This paper presents MedCompress, an open-source compression benchmark targeting exactly that gap. We evaluate three compression strategies on two clinical tasks: binary melanoma classification (ISIC 2020, 33,126 dermoscopy images) and multi-class brain tumor segmentation (BraTS 2021, multi-modal MRI). The strategies are quantization-aware training (QAT), knowledge distillation (KD), and a sparse attention mechanism adapted from Memory Sparse Attention [1]. INT8 quantization through QAT cuts model size by 3.8x with 1.4% AUC loss on melanoma classification. Knowledge distillation from a full U-Net to a lightweight student retains 94.3% of teacher Dice on brain tumor segmentation at 7.9x fewer parameters. Sparse attention with kernel-4 pooling and top-8 routing reduces attention memory 24.5x while losing only 0.7% AUC. The most aggressive combined pipeline (KD + QAT INT8) produces a 2.7 MB melanoma classifier that runs in 8.3 ms and a 4.1 MB segmentation model that runs in 12.6 ms, both on CPU alone. We release all code, model export pipelines, and a cross-platform desktop application for inference on macOS, Windows, and Linux at https://github.com/Abhi183/medcompress.
+Deep learning models for medical image analysis assume GPU hardware. They ship as 50-120 MB files that will not run on the CPUs inside clinic workstations, field laptops, or telemedicine terminals. MedCompress is an open-source compression benchmark. We test three compression strategies on two clinical tasks: melanoma classification (ISIC 2020, 33,126 dermoscopy images) and brain tumor segmentation (BraTS 2021, multi-modal MRI). The strategies are quantization-aware training (QAT), knowledge distillation (KD), and a sparse attention mechanism adapted from Memory Sparse Attention [1]. QAT at INT8 cuts model size 3.8x with 1.4% AUC loss on melanoma classification. Distillation from a full U-Net to a lightweight student keeps 94.3% of teacher Dice on brain tumor segmentation at 7.9x fewer parameters. Sparse attention with kernel-4 pooling and top-8 routing cuts attention memory 24.5x at 0.7% AUC cost. The combined pipeline (KD + QAT INT8) produces a 2.7 MB melanoma classifier that runs in 8.3 ms and a 4.1 MB segmentation model that runs in 12.6 ms. Both run on CPU. Code, export pipelines, and a desktop application for macOS, Windows, and Linux inference are at https://github.com/Abhi183/medcompress.
 
 **Keywords:** model compression, endpoint deployment, quantization-aware training, knowledge distillation, sparse attention, medical imaging, TFLite, ONNX
 
@@ -18,17 +18,11 @@ I manage fleets of Mac and Windows machines across distributed environments. I k
 
 Medical imaging models keep getting more accurate. The hardware at the point of care has not changed. Clinics run five-year-old iMacs. Field offices run Windows laptops with integrated graphics. Telemedicine terminals run whatever was cheapest at procurement time. Cloud inference solves the compute problem but introduces latency, connectivity dependence, and data governance issues that make it a poor fit for many clinical workflows. The images cannot always leave the machine.
 
-Two questions drove this work: how far can you compress a medical imaging model before it stops being useful, and can you ship the result like any other endpoint software?
+I wanted to find out how far you can compress a medical imaging model before it breaks, and whether the compressed version ships like normal endpoint software.
 
-MedCompress is an open-source benchmark that implements three compression methods (QAT, KD, sparse attention) and evaluates them on melanoma classification and brain tumor segmentation. We also release a desktop application that loads the compressed models and runs inference locally on any Mac or Windows machine, no GPU required.
+MedCompress is an open-source benchmark. It implements QAT, KD, and sparse attention compression, evaluates them on melanoma classification and brain tumor segmentation, and exports the results to TFLite and ONNX. We also built a desktop app that loads the compressed models and runs inference on Mac or Windows, no GPU.
 
-Three specific contributions:
-
-1. A systematic comparison of QAT, KD, and their combinations on ISIC 2020 and BraTS 2021, with compression ratios ranging from 2x to 30x and corresponding accuracy trade-offs documented in detail.
-
-2. An adaptation of the KV cache pooling and top-k sparse routing mechanisms from Memory Sparse Attention [1], originally designed for 100M-token language model contexts, to Vision Transformer attention layers in medical imaging. We show these transfer meaningfully to spatial attention patterns in dermoscopy.
-
-3. A deployable cross-platform inference application (GUI and CLI) that loads TFLite or ONNX models and runs medical image analysis on consumer hardware (see Figure 4 for latency benchmarks).
+The paper documents two main pieces of work. First, a comparison of QAT, KD, and their stacked combinations on ISIC 2020 and BraTS 2021, with compression ratios from 2x to 30x. Second, an adaptation of KV cache pooling and top-k sparse routing from Memory Sparse Attention [1] to Vision Transformer attention in medical imaging. Those techniques were built for 100M-token language contexts, but they also work on spatial attention in dermoscopy (see Section 4.4). The desktop inference app that came out of this work is described in Section 5.1; Figure 4 has the latency numbers.
 
 
 ## 2. Related Work
@@ -45,9 +39,9 @@ Pruning [4] removes weights or entire structures. We do not evaluate pruning her
 
 Standard self-attention is quadratic in sequence length. For a Vision Transformer processing a 224x224 image at patch size 16, that means 196 tokens attending to each other at every layer. Linformer [7] projects to lower dimensions. Performer [8] uses random feature approximations. FlashAttention [9] keeps exact attention but restructures memory access for speed.
 
-Chen et al. [1] proposed Memory Sparse Attention (MSA), which takes a different route entirely. MSA compresses the KV cache by averaging contiguous chunks of tokens (chunk-mean pooling) and then routes each query to only the top-k most relevant compressed chunks. On language tasks, MSA scales to 100 million tokens with less than 9% degradation. The 94.84% accuracy on needle-in-a-haystack retrieval at 1M tokens stands out.
+Chen et al. [1] proposed Memory Sparse Attention (MSA), which takes a different route entirely. MSA compresses the KV cache by averaging contiguous chunks of tokens (chunk-mean pooling) and then routes each query to only the top-k most relevant compressed chunks. On language tasks, MSA scales to 100 million tokens with less than 9% degradation. 94.84% accuracy on needle-in-a-haystack retrieval at 1M tokens. That is a strange number to remember, but I kept coming back to it.
 
-The mechanism has nothing language-specific about it. Any sequence of tokens can be pooled and routed. In medical imaging, ViT patch embeddings form a spatial token sequence where neighboring patches often carry redundant texture information. Chunk-mean pooling fits medical attention layers for the same reason.
+The pooling-and-routing mechanism does not care whether the tokens represent words or image patches. In medical imaging, ViT patch embeddings form a spatial sequence where neighboring patches carry the same texture most of the time. Chunk-mean pooling compresses that redundancy the same way MSA compresses repeated context in long documents.
 
 ### 2.3 Medical Imaging on Consumer Hardware
 
@@ -59,7 +53,7 @@ TensorFlow Lite [10] and ONNX Runtime [11] both support CPU inference across mac
 
 ### 3.1 Datasets
 
-**ISIC 2020.** 33,126 dermoscopy images for binary melanoma classification [14]. Melanoma prevalence is approximately 2%, so class imbalance is severe. We resize to 224x224, normalize to [-1, 1], and apply inverse-frequency class weighting. Augmentation: random flips, brightness (factor 0.2), contrast (factor 0.2). Stratified split: 70/15/15 for train/validation/test.
+**ISIC 2020.** 33,126 dermoscopy images for binary melanoma classification [14]. Melanoma prevalence is about 2%, so the dataset is lopsided. We resize to 224x224, normalize to [-1, 1], and apply inverse-frequency class weighting. Augmentation: random flips, brightness (factor 0.2), contrast (factor 0.2). Stratified split: 70/15/15 for train/validation/test.
 
 **BraTS 2021.** Multi-modal brain MRI volumes (T1, T1ce, T2, FLAIR) with four segmentation classes: background, necrotic core, peritumoral edema, enhancing tumor [15]. Labels are remapped from {0, 1, 2, 4} to {0, 1, 2, 3}. We use a 2.5D approach: 3 adjacent axial slices stacked across 4 modalities produce a 12-channel 128x128 input. This captures some volumetric context without requiring 3D convolutions, which are too expensive for CPU endpoints. Background-only slices are filtered. Each volume is z-score normalized independently.
 
@@ -67,11 +61,11 @@ TensorFlow Lite [10] and ONNX Runtime [11] both support CPU inference across mac
 
 For classification: EfficientNetB0 [16] pretrained on ImageNet, with a custom head (global average pooling, batch norm, dropout 0.3, 256-unit dense layer, dropout 0.15, sigmoid output). Last 20 backbone layers unfrozen. Trained with binary cross-entropy, Adam at 1e-4, early stopping on validation AUC (patience 7).
 
-For segmentation: two U-Net variants. The full model has four encoder stages [64, 128, 256, 512, 1024 filters] and serves as teacher. The lite model has three stages [32, 64, 128, 256] with roughly 8x fewer parameters and serves as student. Both trained with Dice + cross-entropy loss, Adam at 1e-3, early stopping on validation Dice.
+For segmentation: two U-Net variants. The full model has four encoder stages [64, 128, 256, 512, 1024 filters] and is the teacher. The lite model has three stages [32, 64, 128, 256] with ~8x fewer parameters and is the student. Both trained with Dice + cross-entropy loss, Adam at 1e-3, early stopping on validation Dice.
 
 ### 3.3 Quantization-Aware Training
 
-We use the TensorFlow Model Optimization Toolkit [5] to wrap trained baselines with fake-quantization nodes simulating INT8 arithmetic. Fine-tuning runs 10 epochs at 1e-5 learning rate. After convergence, QAT wrappers are stripped and the model is exported to TFLite with full INT8 quantization. Calibration uses 200 random training images. FP16 exports are generated for comparison.
+We use the TensorFlow Model Optimization Toolkit [5] to wrap trained baselines with fake-quantization nodes simulating INT8 arithmetic. Fine-tuning runs 10 epochs at 1e-5 learning rate. After convergence, we strip QAT wrappers and export to TFLite with full INT8 quantization. Calibration uses 200 random training images. We also export FP16 variants for comparison.
 
 ### 3.4 Knowledge Distillation
 
@@ -89,7 +83,7 @@ We borrow two ideas from MSA [1] and apply them to the classification pipeline.
 
 **KV cache pooling.** Key and value tensors are averaged in contiguous chunks of size p along the spatial dimension. A kernel of 4 compresses 196 spatial tokens (14x14 patch grid from 224x224 input) down to 49 pooled tokens. This mirrors MSA's `sequence_pooling_kv` operation.
 
-**Top-k routing.** Scaled dot-product scores between queries and pooled keys are computed, reduced across heads (max) and query positions (max), and the top-k chunks are selected. Attention runs only over these k chunks. With k=8 out of 49 chunks, this is a further 6x reduction on top of the 4x from pooling.
+**Top-k routing.** We compute scaled dot-product scores between queries and pooled keys, reduce across heads (max) and query positions (max), and select the top-k chunks. Attention runs only over those k chunks. With k=8 out of 49 chunks, this is a further 6x reduction on top of the 4x from pooling.
 
 The theoretical combined reduction is 24x in attention memory and computation. Section 4.4 reports the empirical accuracy cost.
 
@@ -123,7 +117,7 @@ Models export to TFLite (INT8, FP16, FP32) and ONNX. Metrics:
 | U-Net Full | QAT INT8 | 31.4 | 3.9x | 0.849 | -2.2% |
 | U-Net Full | QAT FP16 | 62.1 | 2.0x | 0.868 | -0.3% |
 
-INT8 consistently gives 3.8-3.9x compression. Classification absorbs it well (-1.4% AUC). Segmentation suffers more (-2.2% Dice) because quantized activations blur the spatial boundaries that separate a 5-pixel-wide tumor rim from surrounding tissue.
+INT8 gives 3.8-3.9x compression across both tasks. Classification absorbs it well (-1.4% AUC). Segmentation suffers more (-2.2% Dice) because quantized activations blur the spatial boundaries that separate a 5-pixel-wide tumor rim from surrounding tissue.
 
 ### 4.3 Knowledge Distillation
 
@@ -197,7 +191,7 @@ TFLite INT8 models use under 50 MB RAM and finish in under 20 ms. A background d
 
 ### 5.1 Deployment as Endpoint Software
 
-A 2.7 MB melanoma classifier that runs in 8 ms fits inside a system tray app or an Electron wrapper. No cloud calls, no internet requirement, no patient data leaving the machine. From an endpoint management perspective, the deployment model is trivial: push the binary through Jamf or Intune, version it alongside the application, roll back by replacing a file. I have deployed hundreds of packages this way. A TFLite model is just another one.
+A 2.7 MB melanoma classifier that runs in 8 ms fits in a system tray app. No cloud, no internet, no patient data leaving the machine. I have pushed hundreds of packages through Jamf and Intune over the years. A TFLite model is just another file in the payload. Version it alongside the app, roll back by swapping the file. Nothing about this requires new infrastructure.
 
 The open-source MedCompress desktop application (`deploy/app.py`) packages this into a working GUI. Users select an image, click analyze, and get a classification result or segmentation map. The CLI variant (`deploy/cli.py`) supports batch processing of image directories and outputs JSON results for integration with existing clinical workflows. Both work on macOS, Windows, and Linux with zero GPU dependency.
 
@@ -212,7 +206,7 @@ Distillation degrades segmentation because the lite U-Net has fewer encoder stag
 ![Figure 2: Sparse attention ablation](../figures/fig2_sparse_attention_ablation.png)
 *Figure 2. Sparse attention ablation. (a) Pooling kernel sweep at top-k=8 showing trade-off between memory reduction and AUC. (b) Top-k sweep at kernel=4 showing graceful degradation as fewer chunks are selected.*
 
-MSA [1] adapted to dermoscopy classification with less accuracy loss than the language-to-vision gap might suggest. Adjacent skin patches carry redundant color and texture information. Averaging groups of four barely touches the discriminative signal. The top-k router learns to attend to the lesion region and ignore uniform background, which makes biological sense.
+I did not expect MSA [1] to work this well on dermoscopy. Adjacent skin patches carry the same color and texture most of the time, so averaging groups of four barely touches the signal that matters. The top-k router ends up attending to the lesion and ignoring uniform skin, which, in hindsight, is what a dermatologist does too.
 
 But the analogy between language documents and image patches has a ceiling. MSA pools along a 1D sequence where documents are semantically distinct. Image patches live on a 2D grid where a melanoma border can cut across chunk boundaries at arbitrary angles. Kernel=8 pooling groups 8 consecutive patches, which at 14x14 resolution means averaging over half a row. That is too coarse for border-level discrimination, which explains the 3.4% AUC drop at kernel=8/top-k=4. A 2D pooling kernel that respects the spatial grid would fix this.
 
@@ -227,13 +221,13 @@ We evaluate only two datasets and tasks. Chest X-ray, retinal, and histopatholog
 
 Immediate next steps: add chest X-ray and retinal classification to the benchmark, test real endpoint performance under concurrent clinical workloads, and explore 2D pooling kernels for spatial-aware sparse attention. Uncertainty quantification on compressed models would tell clinicians when to trust a prediction and when to escalate. Compressed models sit closer to their accuracy floor, so confidence calibration carries more weight.
 
-The deployment architecture I want to build is a lightweight daemon that runs on managed endpoints and analyzes medical images as they arrive. The compression ratios and latencies reported here make that feasible. The open-source application in `deploy/` is the first iteration.
+I want to build a lightweight daemon that runs on managed endpoints and analyzes medical images as they arrive, without anyone needing to think about GPUs or cloud APIs. The compression numbers in this paper say it should work. The application in `deploy/` is the first attempt, and it runs, which is more than I could say at the start of this project.
 
 ## 6. Conclusion
 
 MedCompress shows that medical imaging models compress to single-digit megabyte sizes and sub-20 ms CPU inference times without losing clinical usefulness. QAT + KD together achieve 6x compression on classification and 30x on segmentation. Sparse attention adapted from MSA [1] offers a complementary path for attention-heavy architectures. The code, export pipelines, and desktop application are open source.
 
-Ordinary endpoints can run medical AI. The models needed to get smaller and faster. This paper documents one reproducible way to do that.
+The Mac on a clinic desk can run medical AI. The models just need to get smaller first. This paper is one attempt at figuring out how small.
 
 ---
 
