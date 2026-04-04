@@ -1,0 +1,6 @@
+model,format,size_mb,macos_cpu_ms,windows_cpu_ms,ram_mb
+EfficientNetB0,TFLite_INT8,4.3,14.1,16.8,42
+MobileNetV3-Small_KD,TFLite_INT8,2.7,8.3,9.7,28
+UNet-Lite_KD,TFLite_INT8,4.1,12.6,15.2,38
+EfficientNetB0,ONNX_FP32,16.2,47.5,52.1,89
+MobileNetV3-Small_KD,ONNX_FP16,5.1,18.4,21.3,51

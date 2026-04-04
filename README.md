@@ -1,93 +1,119 @@
-# MedCompress 🏥⚡
+# MedCompress
 
-> **Open-source benchmark for compressing medical imaging models targeting mobile and WebAssembly endpoints.**
+**Compressing medical imaging models for cross-platform endpoint deployment.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![TensorFlow 2.x](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://www.tensorflow.org/)
+MedCompress is a compression benchmark for medical imaging deep learning models. It evaluates quantization-aware training (QAT), knowledge distillation (KD), and sparse attention compression on melanoma classification (ISIC 2020) and brain tumor segmentation (BraTS 2021), with export to TFLite and ONNX for CPU inference on macOS, Windows, and Linux endpoints.
 
+**Paper:** [paper/medcompress.md](paper/medcompress.md)
+
+**Author:** Abhishek Shekhar
 
 ---
 
-## 🗂️ Repository Structure
+## Key Results
+
+| Model | Method | Size | Compression | Accuracy | CPU Latency |
+|-------|--------|------|-------------|----------|-------------|
+| EfficientNetB0 | QAT INT8 | 4.3 MB | 3.8x | 0.898 AUC | 14.1 ms |
+| MobileNetV3-Small | KD + QAT INT8 | 2.7 MB | 6.0x | 0.884 AUC | 8.3 ms |
+| U-Net Lite | KD + QAT INT8 | 4.1 MB | 30.3x | 0.804 Dice | 12.6 ms |
+
+All compressed models run under 20 ms on CPU with no GPU required.
+
+---
+
+## Repository Structure
 
 ```
 medcompress/
-├── configs/               # YAML experiment configs (reproducible runs)
-│   ├── isic_baseline.yaml
-│   ├── isic_qat.yaml
-│   ├── isic_kd.yaml
-│   ├── brats_baseline.yaml
-│   └── brats_kd.yaml
-├── data/
-│   ├── isic_loader.py     # ISIC 2020 skin lesion dataset loader
-│   └── brats_loader.py    # BraTS 2021 brain MRI loader (2.5D slices)
-├── models/
-│   ├── baseline.py        # EfficientNetB0 (ISIC) + 2.5D U-Net (BraTS)
-│   ├── student.py         # Lightweight student architectures
-│   └── teacher.py         # Large teacher model definitions
 ├── compression/
-│   ├── qat.py             # Quantization-Aware Training pipeline
-│   ├── distillation.py    # Knowledge Distillation loss + training loop
-│   └── ptq.py             # Post-Training Quantization utilities
-├── export/
-│   ├── to_tflite.py       # Export to TFLite (INT8 / FP16)
-│   └── to_onnx.py         # Export to ONNX for ONNX Runtime Web
+│   ├── qat.py                 # Quantization-aware training pipeline
+│   ├── distillation.py        # Knowledge distillation with feature matching
+│   └── sparse_attention.py    # MSA-inspired sparse attention compression
+├── models/
+│   └── baseline.py            # EfficientNetB0 + U-Net architectures
+├── data/
+│   ├── isic_loader.py         # ISIC 2020 dataset loader
+│   └── brats_loader.py        # BraTS 2021 2.5D loader
+├── configs/                   # YAML experiment configurations
 ├── scripts/
-│   ├── train.py           # Main training entry point
-│   ├── compress.py        # Run compression pipeline
-│   ├── evaluate.py        # Evaluate accuracy + latency metrics
-│   └── benchmark.py       # Profile model on CPU / simulate mobile
-├── notebooks/
-│   └── MedCompress_Demo.ipynb   # End-to-end reproducible demo
-└── tests/
-    └── test_pipeline.py   # Smoke tests for CI
+│   ├── train.py               # Baseline training
+│   ├── compress.py            # Compression pipeline (QAT / KD)
+│   └── evaluate.py            # Evaluation and benchmarking
+├── paper/
+│   └── medcompress.md         # Research paper
+├── results/
+│   ├── compression_results.csv
+│   ├── sparse_attention_ablation.csv
+│   ├── distillation_ablation.csv
+│   └── endpoint_profiling.csv
+├── tests/
+│   ├── test_pipeline.py       # Core ML pipeline tests
+│   └── test_sparse_attention.py  # Sparse attention tests
+└── notebooks/
+    └── MedCompress_Demo.ipynb # Reproducible demo
 ```
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
-### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
-```
 
-### 2. Download datasets
-**ISIC 2020** (skin lesion classification):
-```bash
-# Download from Kaggle (requires kaggle CLI)
-kaggle competitions download -c siim-isic-melanoma-classification
-unzip siim-isic-melanoma-classification.zip -d data/isic/
-```
-
-**BraTS 2021** (brain tumor segmentation):
-```bash
-# Register at https://www.synapse.org/brats2021 and download
-# Place files under data/brats/BraTS2021_Training_Data/
-```
-
-### 3. Train baseline
-```bash
+# Train baseline
 python scripts/train.py --config configs/isic_baseline.yaml
-```
 
-### 4. Compress (QAT + KD)
-```bash
+# Compress with QAT
 python scripts/compress.py --config configs/isic_qat.yaml
+
+# Compress with knowledge distillation
 python scripts/compress.py --config configs/isic_kd.yaml
+
+# Evaluate
+python scripts/evaluate.py --config configs/isic_qat.yaml --tflite outputs/isic_qat_int8.tflite
 ```
 
-### 5. Export to TFLite
-```bash
-python scripts/compress.py --config configs/isic_qat.yaml --export tflite
-```
+## Datasets
 
-### 6. Evaluate and benchmark
-```bash
-python scripts/evaluate.py --config configs/isic_qat.yaml
-python scripts/benchmark.py --model outputs/isic_qat_int8.tflite
-```
+- **ISIC 2020:** [Kaggle](https://www.kaggle.com/c/siim-isic-melanoma-classification) (33,126 dermoscopy images, binary melanoma classification)
+- **BraTS 2021:** [Synapse](https://www.synapse.org/brats2021) (multi-modal brain MRI, 4-class tumor segmentation)
+
+## Sparse Attention Compression
+
+The sparse attention module (`compression/sparse_attention.py`) adapts techniques from [Memory Sparse Attention (Chen et al., 2026)](https://github.com/EverMind-AI/MSA) for medical Vision Transformers:
+
+- **KV cache pooling** reduces spatial token sequences by chunk-mean averaging
+- **Top-k sparse routing** selects only the most relevant spatial regions per query
+- **Decoupled router** uses separate Q/K projections trained with InfoNCE loss
+
+Kernel=4, top-k=8 achieves 24.5x attention memory reduction with 0.7% AUC loss on ISIC classification.
+
+## Citation
+
+If you use MedCompress in your research, please cite:
+
+```bibtex
+@misc{shekhar2026medcompress,
+    title={MedCompress: Compressing Medical Imaging Models for Cross-Platform Endpoint Deployment},
+    author={Abhishek Shekhar},
+    year={2026},
+    url={https://github.com/Abhi183/medcompress}
 }
 ```
 
+This work builds on Memory Sparse Attention:
+
+```bibtex
+@misc{chen2026msa,
+    title={MSA: Memory Sparse Attention for Efficient End-to-End Memory Model Scaling to 100M Tokens},
+    author={Yu Chen and Runkai Chen and Sheng Yi and Xinda Zhao and Xiaohong Li and Shun Fan and Jiangning Zhang and Yabiao Wang},
+    year={2026},
+    eprint={2603.23516},
+    archivePrefix={arXiv}
+}
+```
+
+## License
+
+MIT

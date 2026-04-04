@@ -1,0 +1,11 @@
+model,task,method,format,params_m,size_mb,compression_ratio,metric_name,metric_value,latency_median_ms,latency_p95_ms
+EfficientNetB0,isic_classification,baseline,FP32,4.05,16.2,1.0,AUC,0.912,48.3,53.1
+EfficientNetB0,isic_classification,qat,INT8,4.05,4.3,3.8,AUC,0.898,14.1,16.2
+EfficientNetB0,isic_classification,qat,FP16,4.05,8.1,2.0,AUC,0.910,26.4,29.8
+MobileNetV3-Small,isic_classification,kd,FP32,2.54,10.2,1.6,AUC,0.896,22.7,25.3
+MobileNetV3-Small,isic_classification,kd+qat,INT8,2.54,2.7,6.0,AUC,0.884,8.3,9.7
+UNet-Full,brats_segmentation,baseline,FP32,31.03,124.1,1.0,Dice,0.871,312.5,341.2
+UNet-Full,brats_segmentation,qat,INT8,31.03,31.4,3.9,Dice,0.849,89.2,97.4
+UNet-Full,brats_segmentation,qat,FP16,31.03,62.1,2.0,Dice,0.868,162.1,178.3
+UNet-Lite,brats_segmentation,kd,FP32,3.89,15.6,7.9,Dice,0.821,41.8,46.5
+UNet-Lite,brats_segmentation,kd+qat,INT8,3.89,4.1,30.3,Dice,0.804,12.6,14.8

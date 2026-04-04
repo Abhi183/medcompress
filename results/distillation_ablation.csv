@@ -1,0 +1,8 @@
+task,temperature,alpha,feature_distill,student_metric,metric_name
+isic_classification,2.0,0.7,false,0.889,AUC
+isic_classification,4.0,0.7,false,0.896,AUC
+isic_classification,6.0,0.7,false,0.893,AUC
+isic_classification,4.0,0.5,false,0.891,AUC
+isic_classification,4.0,0.9,false,0.887,AUC
+brats_segmentation,3.0,0.6,false,0.809,Dice
+brats_segmentation,3.0,0.6,true,0.821,Dice
