@@ -457,7 +457,7 @@ A 2.7~MB melanoma classifier with 8.3~ms inference latency satisfies the constra
 
 \subsection{Quantization Asymmetry Between Tasks}
 
-QAT degrades segmentation ($-$2.2\% Dice) more than classification ($-$1.5\% AUC). We attribute this to the spatial precision requirements of segmentation: INT8 quantization discretizes activations into 256 levels, and when the decision boundary between tumor and healthy tissue spans only a few pixels, that discretization introduces sufficient spatial noise to shift boundary predictions. The sensitivity metric confirms this: classification sensitivity drops from 0.741 to 0.718, while segmentation sensitivity drops from 0.852 to 0.831, a proportionally larger loss for the spatially dense task. For clinical segmentation where boundary accuracy is critical, FP16 quantization ($-$0.3\% Dice) is preferable despite the $2{\times}$ larger model.
+QAT degrades segmentation ($-$2.2\% Dice) more than classification ($-$1.5\% AUC). INT8 quantization discretizes activations into 256 levels. When the decision boundary between tumor and healthy tissue spans only a few pixels, that discretization shifts boundary predictions by enough to reduce Dice. The sensitivity metric confirms the asymmetry: classification sensitivity drops from 0.741 to 0.718 ($-$3.1\%), while segmentation sensitivity drops from 0.852 to 0.831 ($-$2.5\%). For clinical segmentation where boundary accuracy matters, FP16 quantization is the safer choice: it loses only 0.3\% Dice at $2{\times}$ compression rather than 2.2\% Dice at $3.9{\times}$.
 
 \subsection{Distillation Gain Analysis}
 
