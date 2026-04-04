@@ -1,0 +1,49 @@
+# configs/brats_qat.yaml
+# QAT INT8 for BraTS 2021 segmentation
+
+task: segmentation
+dataset: brats
+seed: 42
+
+data:
+  root: data/brats/BraTS2021_Training_Data/
+  modalities: [t1, t1ce, t2, flair]
+  image_size: 240
+  patch_size: 128
+  batch_size: 8
+  val_split: 0.15
+  test_split: 0.15
+  n_slices: 3
+
+model:
+  name: unet_full
+  num_classes: 4
+  filters: [64, 128, 256, 512]
+  input_channels: 12
+  checkpoint: outputs/brats_baseline/best_model.keras
+
+compression:
+  method: qat
+  quantize_layers: all
+  per_channel: true
+
+training:
+  epochs: 10
+  optimizer: adam
+  learning_rate: 1.0e-5
+  lr_schedule: constant
+  loss: dice_ce
+
+export:
+  tflite:
+    enabled: true
+    precision: int8
+    calibration_samples: 100
+  onnx:
+    enabled: false
+
+output:
+  dir: outputs/brats_qat/
+  tflite_path: outputs/brats_qat_int8.tflite
+  log_wandb: true
+  wandb_project: medcompress

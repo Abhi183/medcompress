@@ -265,17 +265,224 @@ for key in ["dice", "iou", "sensitivity"]:
     vals = [r[key] for r in qat_results]
     print(f"  {key}: {np.mean(vals):.4f} +/- {np.std(vals):.4f}")
 
-# %% Cell 8: Save
+# %% Cell 8: Experiment 3 — Student U-Net Lite from Scratch
+print("\n" + "=" * 50)
+print("EXP 3: Kvasir-SEG U-Net Lite from Scratch (no KD)")
+print("=" * 50)
+
+scratch_results = []
+for seed in SEEDS:
+    print(f"\n--- Seed {seed} ---")
+    set_seed(seed)
+    student = build_unet([16, 32, 64, 128], name="unet_lite_kvasir")
+    student.compile(optimizer=keras.optimizers.Adam(1e-3), loss=dice_bce_loss)
+    student.fit(train_ds, validation_data=val_ds, epochs=30,
+                callbacks=[keras.callbacks.EarlyStopping(
+                    monitor="val_loss", patience=7, restore_best_weights=True)],
+                verbose=1)
+    metrics = evaluate_seg(student, test_ds, f"Scratch s{seed}")
+    scratch_results.append(metrics)
+
+student.save(f"{OUT}/models/kvasir_unet_lite_scratch.keras")
+print("\nScratch Student Summary:")
+for key in ["dice", "iou", "sensitivity"]:
+    vals = [r[key] for r in scratch_results]
+    print(f"  {key}: {np.mean(vals):.4f} +/- {np.std(vals):.4f}")
+
+
+# %% Cell 9: Experiment 4 — Knowledge Distillation
+print("\n" + "=" * 50)
+print("EXP 4: Kvasir-SEG Knowledge Distillation (T=3, alpha=0.6)")
+print("=" * 50)
+
+TEMPERATURE = 3.0
+ALPHA = 0.6
+
+class SegDistillationModel(keras.Model):
+    def __init__(self, student, teacher, **kwargs):
+        super().__init__(**kwargs)
+        self.student = student
+        self.teacher = teacher
+        self.teacher.trainable = False
+
+    def compile(self, optimizer, temperature=3.0, alpha=0.6, **kwargs):
+        super().compile(optimizer=optimizer, **kwargs)
+        self.temperature = temperature
+        self.alpha = alpha
+
+    def train_step(self, data):
+        x, y = data
+        teacher_pred = self.teacher(x, training=False)
+
+        with tf.GradientTape() as tape:
+            student_pred = self.student(x, training=True)
+            # Soft targets (temperature-scaled)
+            t_logits = tf.math.log(teacher_pred / (1 - teacher_pred + 1e-7)) / self.temperature
+            s_logits = tf.math.log(student_pred / (1 - student_pred + 1e-7)) / self.temperature
+            t_soft = tf.sigmoid(t_logits)
+            s_soft = tf.sigmoid(s_logits)
+            distill_loss = tf.reduce_mean(
+                tf.keras.losses.binary_crossentropy(t_soft, s_soft)) * (self.temperature ** 2)
+            # Hard targets (Dice + BCE)
+            hard_loss = dice_bce_loss(y, student_pred)
+            loss = self.alpha * distill_loss + (1 - self.alpha) * hard_loss
+
+        grads = tape.gradient(loss, self.student.trainable_variables)
+        self.optimizer.apply_gradients(zip(grads, self.student.trainable_variables))
+        return {"loss": loss, "hard_loss": hard_loss, "distill_loss": distill_loss}
+
+    def call(self, x, training=False):
+        return self.student(x, training=training)
+
+teacher = keras.models.load_model(
+    f"{OUT}/models/kvasir_unet_baseline.keras",
+    custom_objects={"dice_bce_loss": dice_bce_loss})
+
+kd_results = []
+for seed in SEEDS:
+    print(f"\n--- KD Seed {seed} ---")
+    set_seed(seed)
+    student = build_unet([16, 32, 64, 128], name="unet_lite_kd")
+    distiller = SegDistillationModel(student, teacher)
+    distiller.compile(optimizer=keras.optimizers.Adam(1e-3),
+                      temperature=TEMPERATURE, alpha=ALPHA)
+    distiller.fit(train_ds, epochs=30, verbose=1)
+    metrics = evaluate_seg(student, test_ds, f"KD s{seed}")
+    kd_results.append(metrics)
+
+student.save(f"{OUT}/models/kvasir_unet_lite_kd.keras")
+
+scratch_dice = np.mean([r["dice"] for r in scratch_results])
+kd_dice = np.mean([r["dice"] for r in kd_results])
+print(f"\n*** DISTILLATION GAIN: {(kd_dice - scratch_dice)*100:+.2f}% Dice ***")
+print(f"    Scratch: {scratch_dice:.4f}  vs  KD: {kd_dice:.4f}")
+
+
+# %% Cell 10: Experiment 5 — KD + QAT INT8 Combined
+print("\n" + "=" * 50)
+print("EXP 5: Kvasir-SEG KD + QAT INT8")
+print("=" * 50)
+
+kd_qat_results = []
+for seed in SEEDS:
+    print(f"\n--- KD+QAT Seed {seed} ---")
+    set_seed(seed)
+    kd_model = keras.models.load_model(
+        f"{OUT}/models/kvasir_unet_lite_kd.keras",
+        custom_objects={"dice_bce_loss": dice_bce_loss})
+    qat = tfmot.quantization.keras.quantize_model(kd_model)
+    qat.compile(optimizer=keras.optimizers.Adam(1e-5), loss=dice_bce_loss)
+    qat.fit(train_ds, validation_data=val_ds, epochs=5, verbose=0)
+
+    stripped = tfmot.quantization.keras.strip_pruning(qat)
+    converter = tf.lite.TFLiteConverter.from_keras_model(stripped)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_bytes = converter.convert()
+    path = f"{OUT}/tflite/kvasir_kd_qat_int8_s{seed}.tflite"
+    with open(path, "wb") as f:
+        f.write(tflite_bytes)
+    metrics = evaluate_seg(stripped, test_ds, f"KD+QAT s{seed}")
+    metrics["size_mb"] = os.path.getsize(path) / 1e6
+    kd_qat_results.append(metrics)
+
+print("\nKD+QAT INT8 Summary:")
+for key in ["dice", "iou", "sensitivity"]:
+    vals = [r[key] for r in kd_qat_results]
+    print(f"  {key}: {np.mean(vals):.4f} +/- {np.std(vals):.4f}")
+
+
+# %% Cell 11: TFLite CPU Latency Profiling
+print("\n" + "=" * 50)
+print("CPU LATENCY PROFILING")
+print("=" * 50)
+
+def profile_tflite(path, n_runs=50):
+    interpreter = tf.lite.Interpreter(model_path=path)
+    interpreter.allocate_tensors()
+    inp_detail = interpreter.get_input_details()[0]
+    shape = inp_detail["shape"]
+    dtype = inp_detail["dtype"]
+    dummy = np.random.randn(*shape).astype(dtype)
+    for _ in range(5):
+        interpreter.set_tensor(inp_detail["index"], dummy)
+        interpreter.invoke()
+    times = []
+    for _ in range(n_runs):
+        start = time.time()
+        interpreter.set_tensor(inp_detail["index"], dummy)
+        interpreter.invoke()
+        times.append((time.time() - start) * 1000)
+    return {"median_ms": np.median(times), "p95_ms": np.percentile(times, 95),
+            "size_mb": os.path.getsize(path) / 1e6}
+
+tflite_dir = f"{OUT}/tflite"
+for fname in sorted(os.listdir(tflite_dir)):
+    if fname.endswith(".tflite") and "s42" in fname:
+        path = os.path.join(tflite_dir, fname)
+        stats = profile_tflite(path)
+        print(f"  {fname}: {stats['median_ms']:.1f} ms (P95: {stats['p95_ms']:.1f} ms), "
+              f"{stats['size_mb']:.1f} MB")
+
+
+# %% Cell 12: Compile and Save All Results
+print("\n" + "=" * 50)
+print("COMPILING FINAL RESULTS")
+print("=" * 50)
+
+def summarize(results_list, name, metric_key="dice"):
+    row = {"method": name}
+    for key in [metric_key, "iou", "sensitivity"]:
+        values = [r[key] for r in results_list]
+        row[f"{key}_mean"] = round(np.mean(values), 4)
+        row[f"{key}_std"] = round(np.std(values), 4)
+    if "size_mb" in results_list[0]:
+        row["size_mb"] = round(np.mean([r["size_mb"] for r in results_list]), 1)
+    return row
+
+all_results = [
+    summarize(baseline_results, "Baseline FP32"),
+    summarize(qat_results, "QAT INT8"),
+    summarize(scratch_results, "Student Scratch"),
+    summarize(kd_results, "KD (T=3, a=0.6)"),
+    summarize(kd_qat_results, "KD + QAT INT8"),
+]
+
+results_df = pd.DataFrame(all_results)
+results_df.to_csv(f"{OUT}/results/kvasir_full_results.csv", index=False)
+print(results_df.to_string(index=False))
+
+# Distillation gain table
+gain_df = pd.DataFrame([
+    {"method": "Scratch", "dice": scratch_dice,
+     "std": np.std([r["dice"] for r in scratch_results])},
+    {"method": "KD", "dice": kd_dice,
+     "std": np.std([r["dice"] for r in kd_results])},
+    {"method": "Gain", "dice": kd_dice - scratch_dice, "std": 0},
+])
+gain_df.to_csv(f"{OUT}/results/kvasir_distillation_gain.csv", index=False)
+print("\nDistillation Gain:")
+print(gain_df.to_string(index=False))
+
 import json
-results = {
-    "baseline": {k: {"mean": float(np.mean([r[k] for r in baseline_results])),
-                      "std": float(np.std([r[k] for r in baseline_results]))}
-                 for k in ["dice", "iou", "sensitivity"]},
-    "qat_int8": {k: {"mean": float(np.mean([r[k] for r in qat_results])),
-                      "std": float(np.std([r[k] for r in qat_results]))}
-                 for k in ["dice", "iou", "sensitivity"]},
-}
 with open(f"{OUT}/results/kvasir_results.json", "w") as f:
-    json.dump(results, f, indent=2)
-print(f"\nResults: {OUT}/results/")
-print(f"Models: {OUT}/tflite/")
+    json.dump({
+        "baseline": {k: {"mean": float(np.mean([r[k] for r in baseline_results])),
+                          "std": float(np.std([r[k] for r in baseline_results]))}
+                     for k in ["dice", "iou", "sensitivity"]},
+        "qat_int8": {k: {"mean": float(np.mean([r[k] for r in qat_results])),
+                          "std": float(np.std([r[k] for r in qat_results]))}
+                     for k in ["dice", "iou", "sensitivity"]},
+        "scratch": {k: {"mean": float(np.mean([r[k] for r in scratch_results])),
+                         "std": float(np.std([r[k] for r in scratch_results]))}
+                    for k in ["dice", "iou", "sensitivity"]},
+        "kd": {k: {"mean": float(np.mean([r[k] for r in kd_results])),
+                    "std": float(np.std([r[k] for r in kd_results]))}
+               for k in ["dice", "iou", "sensitivity"]},
+        "kd_qat": {k: {"mean": float(np.mean([r[k] for r in kd_qat_results])),
+                        "std": float(np.std([r[k] for r in kd_qat_results]))}
+                   for k in ["dice", "iou", "sensitivity"]},
+    }, f, indent=2)
+
+print(f"\nAll results saved to {OUT}/results/")
+print(f"All models saved to {OUT}/tflite/")
+print("Download the results/ folder for paper data.")

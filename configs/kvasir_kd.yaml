@@ -1,0 +1,53 @@
+# configs/kvasir_kd.yaml
+# Knowledge Distillation for Kvasir-SEG: U-Net Full teacher -> U-Net Lite student
+
+task: segmentation
+dataset: kvasir_seg
+seed: 42
+
+data:
+  root: data/kvasir-seg/
+  image_size: 256
+  batch_size: 16
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+teacher:
+  name: unet_full
+  checkpoint: outputs/kvasir_teacher/best_model.keras
+  frozen: true
+
+student:
+  name: unet_lite
+  num_classes: 2
+  filters: [32, 64, 128, 256]
+  input_channels: 3
+
+distillation:
+  temperature: 3.0
+  alpha: 0.6
+  loss: kl_divergence
+  feature_distillation: true
+  feature_layers:
+    - encoder_block2_output
+    - bottleneck_output
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: dice_ce
+
+export:
+  tflite:
+    enabled: true
+    precision: int8
+    calibration_samples: 100
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/kvasir_kd/
+  log_wandb: false

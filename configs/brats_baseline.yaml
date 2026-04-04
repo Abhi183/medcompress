@@ -1,0 +1,49 @@
+# configs/brats_baseline.yaml
+# Baseline U-Net Full on BraTS 2021 brain tumor segmentation
+
+task: segmentation
+dataset: brats
+seed: 42
+
+data:
+  root: data/brats/BraTS2021_Training_Data/
+  modalities: [t1, t1ce, t2, flair]
+  image_size: 240
+  patch_size: 128
+  batch_size: 8
+  val_split: 0.15
+  test_split: 0.15
+  n_slices: 3
+
+model:
+  name: unet_full
+  num_classes: 4           # background, NCR, ED, ET
+  filters: [64, 128, 256, 512]
+  input_channels: 12       # 4 modalities * 3 slices (2.5D)
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: dice_ce
+  early_stopping_patience: 10
+
+metrics:
+  - dice_coefficient
+  - hausdorff_distance_95
+  - sensitivity
+  - specificity
+
+export:
+  tflite:
+    enabled: true
+    precision: fp32
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/brats_baseline/
+  save_best: true
+  log_wandb: true
+  wandb_project: medcompress

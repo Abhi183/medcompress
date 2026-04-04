@@ -1,0 +1,1 @@
+"""MedCompress baseline model architectures."""

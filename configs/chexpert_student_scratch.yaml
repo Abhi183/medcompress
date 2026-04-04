@@ -1,0 +1,33 @@
+# configs/chexpert_student_scratch.yaml
+# MobileNetV3Small trained from scratch on CheXpert (no distillation)
+# Used as baseline to measure distillation gain
+
+task: classification
+dataset: chexpert
+seed: 42
+
+data:
+  root: data/chexpert/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.20
+  augmentation: true
+
+model:
+  name: mobilenetv3small
+  num_classes: 5
+  pretrained: imagenet
+  dropout: 0.2
+
+training:
+  epochs: 40
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: binary_crossentropy
+
+output:
+  dir: outputs/chexpert_student_scratch/
+  save_best: true
+  log_wandb: true
+  wandb_project: medcompress

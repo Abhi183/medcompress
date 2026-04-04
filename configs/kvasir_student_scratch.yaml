@@ -1,0 +1,33 @@
+# configs/kvasir_student_scratch.yaml
+# U-Net Lite trained from scratch on Kvasir-SEG (no distillation)
+
+task: segmentation
+dataset: kvasir_seg
+seed: 42
+
+data:
+  root: data/kvasir-seg/
+  image_size: 256
+  batch_size: 16
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+model:
+  name: unet_lite
+  num_classes: 2
+  filters: [32, 64, 128, 256]
+  input_channels: 3
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-3
+  lr_schedule: cosine
+  loss: dice_ce
+  early_stopping_patience: 10
+
+output:
+  dir: outputs/kvasir_student_scratch/
+  save_best: true
+  log_wandb: false

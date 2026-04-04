@@ -19,3 +19,9 @@ wandb/
 *.log
 *.out
 *.synctex.gz
+.DS_Store
+*.ipynb_checkpoints/
+data/isic/
+data/brats/
+data/chexpert/
+data/kvasir-seg/

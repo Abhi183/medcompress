@@ -1,0 +1,49 @@
+# configs/chexpert_kd.yaml
+# Knowledge Distillation for CheXpert: EfficientNetB3 teacher -> MobileNetV3Small student
+
+task: classification
+dataset: chexpert
+seed: 42
+
+data:
+  root: data/chexpert/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.20
+  augmentation: true
+
+teacher:
+  name: efficientnetb3
+  checkpoint: outputs/chexpert_teacher/best_model.keras
+  frozen: true
+
+student:
+  name: mobilenetv3small
+  num_classes: 5
+  pretrained: imagenet
+  dropout: 0.2
+
+distillation:
+  temperature: 4.0
+  alpha: 0.7
+  loss: kl_divergence
+  feature_distillation: false
+
+training:
+  epochs: 40
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: binary_crossentropy
+
+export:
+  tflite:
+    enabled: true
+    precision: fp16
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/chexpert_kd/
+  log_wandb: true
+  wandb_project: medcompress

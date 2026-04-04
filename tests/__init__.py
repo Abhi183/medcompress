@@ -1,0 +1,1 @@
+"""MedCompress test suite."""

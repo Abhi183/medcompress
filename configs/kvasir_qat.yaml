@@ -1,0 +1,46 @@
+# configs/kvasir_qat.yaml
+# QAT INT8 for Kvasir-SEG polyp segmentation
+
+task: segmentation
+dataset: kvasir_seg
+seed: 42
+
+data:
+  root: data/kvasir-seg/
+  image_size: 256
+  batch_size: 16
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: false
+
+model:
+  name: unet_lite
+  num_classes: 2
+  filters: [32, 64, 128, 256]
+  input_channels: 3
+  checkpoint: outputs/kvasir_baseline/best_model.keras
+
+compression:
+  method: qat
+  quantize_layers: all
+  per_channel: true
+
+training:
+  epochs: 10
+  optimizer: adam
+  learning_rate: 1.0e-5
+  lr_schedule: constant
+  loss: dice_ce
+
+export:
+  tflite:
+    enabled: true
+    precision: int8
+    calibration_samples: 100
+  onnx:
+    enabled: false
+
+output:
+  dir: outputs/kvasir_qat/
+  tflite_path: outputs/kvasir_qat_int8.tflite
+  log_wandb: false
