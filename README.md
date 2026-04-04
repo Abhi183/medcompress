@@ -4,7 +4,7 @@
 
 MedCompress is a compression benchmark for medical imaging deep learning models. It evaluates quantization-aware training (QAT), knowledge distillation (KD), and sparse attention compression on melanoma classification (ISIC 2020) and brain tumor segmentation (BraTS 2021), with export to TFLite and ONNX for CPU inference on macOS, Windows, and Linux endpoints.
 
-**Paper:** [paper/medcompress.md](paper/medcompress.md)
+**Paper:** [paper/medcompress.pdf](paper/medcompress.pdf) (LaTeX source: [paper/medcompress.tex](paper/medcompress.tex))
 
 **Author:** Abhishek Shekhar
 
@@ -41,7 +41,10 @@ medcompress/
 │   ├── compress.py            # Compression pipeline (QAT / KD)
 │   └── evaluate.py            # Evaluation and benchmarking
 ├── paper/
-│   └── medcompress.md         # Research paper
+│   ├── medcompress.tex        # LaTeX source
+│   ├── medcompress.pdf        # Compiled paper (7 pages, 5 figures, 5 tables)
+│   ├── references.bib         # BibTeX bibliography (20 references)
+│   └── fig*.png               # Publication figures
 ├── results/
 │   ├── compression_results.csv
 │   ├── sparse_attention_ablation.csv
