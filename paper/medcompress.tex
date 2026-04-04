@@ -12,6 +12,26 @@
 \usepackage{microtype}
 \usepackage{float}
 \usepackage{multirow}
+\usepackage{listings}
+\usepackage{inconsolata}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\bfseries\color[rgb]{0.13,0.29,0.53},
+  stringstyle=\color[rgb]{0.31,0.54,0.16},
+  commentstyle=\itshape\color[rgb]{0.5,0.5,0.5},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  frame=single,
+  framesep=3pt,
+  breaklines=true,
+  showstringspaces=false,
+  captionpos=b,
+  aboveskip=8pt,
+  belowskip=4pt,
+}
 
 \bibliographystyle{unsrtnat}
 
@@ -74,10 +94,111 @@ Prior work on compressed medical models has targeted mobile phones~\citep{pachec
 % =====================================================================
 
 \subsection{Datasets}
+\label{sec:datasets}
 
-\textbf{ISIC 2020}~\citep{codella2019isic} contains 33,126 dermoscopy images for binary melanoma classification (prevalence ${\sim}$2\%). Images were resized to $224{\times}224$, normalized to $[-1, 1]$, and augmented with random flips, brightness ($\pm 0.2$), and contrast ($\pm 0.2$). Inverse-frequency class weighting addressed the imbalance. We used stratified 70/15/15 train/validation/test splits.
+We selected two publicly available benchmarks that span two distinct clinical imaging modalities and two task types (classification vs.\ segmentation). Both exhibit properties that challenge compression methods: extreme class imbalance and fine-grained spatial features.
 
-\textbf{BraTS 2021}~\citep{baid2021brats} provides multi-modal MRI volumes (T1, T1ce, T2, FLAIR) with four segmentation classes (background, necrotic core, peritumoral edema, enhancing tumor). Labels were remapped from $\{0,1,2,4\}$ to $\{0,1,2,3\}$. We employed a 2.5D strategy: three adjacent axial slices stacked across four modalities yield a 12-channel $128{\times}128$ input, providing inter-slice context without the computational cost of 3D convolutions. Background-only slices were filtered; each volume was z-score normalized independently.
+\subsubsection{ISIC 2020: Dermoscopy Classification}
+
+The International Skin Imaging Collaboration 2020 dataset~\citep{codella2019isic} contains 33,126 dermoscopy images labeled for binary melanoma classification. As shown in Figure~\ref{fig:eda_isic}(a), the class distribution is heavily skewed: 32,542 benign samples (98.2\%) versus 584 melanoma samples (1.8\%). This 56:1 imbalance is representative of clinical dermoscopy screening, where the overwhelming majority of lesions are benign. Compression algorithms must preserve sensitivity to the minority class under these conditions; a model that predicts ``benign'' for every input achieves 98.2\% accuracy but zero clinical value.
+
+Raw image dimensions vary between 3024$\times$2016 and 6000$\times$4000 pixels (Figure~\ref{fig:eda_isic}(b)). We resized all images to $224{\times}224$ to match the EfficientNet input specification, normalized pixel values to $[-1, 1]$, and applied the following augmentation pipeline:
+
+\begin{lstlisting}[caption={ISIC preprocessing and augmentation pipeline (\texttt{data/isic\_loader.py}).},label=lst:isic_preprocess]
+def _augment(self, image, label):
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.random_flip_up_down(image)
+    image = tf.image.random_brightness(image, 0.2)
+    image = tf.image.random_contrast(image, 0.8, 1.2)
+    return image, label
+
+def _compute_class_weights(self):
+    counts = self.df["target"].value_counts()
+    total = len(self.df)
+    self.class_weights = {
+        int(cls): total / (len(counts) * cnt)
+        for cls, cnt in counts.items()
+    }
+\end{lstlisting}
+
+Inverse-frequency class weighting (Listing~\ref{lst:isic_preprocess}, lines 8--12) assigns weight $w_c = N / (C \cdot n_c)$ where $N$ is the total sample count, $C{=}2$ is the number of classes, and $n_c$ is the count of class $c$. This yields $w_{\text{melanoma}} \approx 28.4$, upweighting the minority class during loss computation. Data was split 70/15/15 for train/validation/test using stratified sampling to maintain the class ratio across splits (Figure~\ref{fig:eda_splits}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_eda_isic.png}
+\caption{ISIC 2020 exploratory analysis. (a) Class distribution showing the 56:1 benign-to-melanoma ratio. (b) Original image dimensions before resizing to $224{\times}224$.}
+\label{fig:eda_isic}
+\end{figure}
+
+\subsubsection{BraTS 2021: Brain Tumor Segmentation}
+
+The Brain Tumor Segmentation Challenge 2021~\citep{baid2021brats} provides 1,251 multi-modal MRI volumes, each consisting of four co-registered sequences: T1-weighted, T1 contrast-enhanced, T2-weighted, and FLAIR. Voxel-level labels identify four classes: background, necrotic core (NCR), peritumoral edema (ED), and enhancing tumor (ET). As shown in Figure~\ref{fig:eda_brats}(a), background dominates at 97.2\% of voxels, with the three tumor sub-regions collectively occupying 2.8\%. This extreme spatial imbalance is addressed through the Dice loss component, which normalizes by per-class volume.
+
+The original BraTS labels use the encoding $\{0, 1, 2, 4\}$ (label 3 is unused). We remap these to contiguous indices $\{0, 1, 2, 3\}$ for standard one-hot encoding:
+
+\begin{lstlisting}[caption={BraTS label remapping and z-score normalization (\texttt{data/brats\_loader.py}).},label=lst:brats_preprocess]
+LABEL_REMAP = {0: 0, 1: 1, 2: 2, 4: 3}
+
+def _normalize_volume(vol: np.ndarray) -> np.ndarray:
+    """Z-score normalize (non-zero voxels only)."""
+    mask = vol > 0
+    if mask.sum() == 0:
+        return vol.astype(np.float32)
+    mu, sigma = vol[mask].mean(), vol[mask].std()
+    sigma = sigma if sigma > 0 else 1.0
+    out = np.zeros_like(vol, dtype=np.float32)
+    out[mask] = (vol[mask] - mu) / sigma
+    return out
+\end{lstlisting}
+
+Each modality is z-score normalized independently using only non-zero voxels (Listing~\ref{lst:brats_preprocess}), which avoids bias from the large zero-valued background region. Figure~\ref{fig:eda_brats}(b) shows the resulting intensity distributions across the four MRI sequences after normalization.
+
+We adopted a 2.5D slice extraction strategy (Figure~\ref{fig:eda_pipeline}): for each axial position $z$, three adjacent slices ($z{-}1$, $z$, $z{+}1$) are stacked across all four modalities, producing a 12-channel input of size $128{\times}128$. This provides inter-slice volumetric context without the computational cost of full 3D convolutions, which is critical for CPU-only inference. Slices containing only background voxels are discarded during training to reduce class imbalance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_eda_brats.png}
+\caption{BraTS 2021 exploratory analysis. (a) Segmentation class voxel proportions showing 97.2\% background dominance. (b) Intensity distributions across the four MRI modalities after z-score normalization.}
+\label{fig:eda_brats}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_eda_pipeline.png}
+\caption{The 2.5D preprocessing pipeline for BraTS 2021. Four MRI modalities are independently normalized, three adjacent axial slices are extracted and stacked to form a 12-channel $128{\times}128$ input, and background-only slices are filtered.}
+\label{fig:eda_pipeline}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_eda_splits.png}
+\caption{Train/validation/test splits for both datasets. Stratified sampling preserves class ratios. ISIC: $n{=}33{,}126$ images. BraTS: $n{=}1{,}251$ volumes.}
+\label{fig:eda_splits}
+\end{figure}
+
+\subsubsection{Dataset Summary}
+
+Table~\ref{tab:dataset_summary} summarizes the two datasets. The combination tests compression under two distinct regimes: ISIC stresses the sensitivity/specificity tradeoff under class imbalance, while BraTS stresses spatial boundary preservation under multi-class segmentation.
+
+\begin{table}[t]
+\centering
+\caption{Dataset summary. ISIC challenges compression through class imbalance; BraTS through fine spatial boundaries and multi-modal input.}
+\label{tab:dataset_summary}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Property & ISIC 2020 & BraTS 2021 \\
+\midrule
+Task & Classification & Segmentation \\
+Samples & 33,126 images & 1,251 volumes \\
+Classes & 2 (benign/melanoma) & 4 (BG/NCR/ED/ET) \\
+Minority prevalence & 1.8\% & 2.8\% (tumor) \\
+Input size & $224{\times}224{\times}3$ & $128{\times}128{\times}12$ \\
+Modalities & RGB dermoscopy & T1/T1ce/T2/FLAIR \\
+Split & 70/15/15 stratified & 70/15/15 stratified \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Baseline Models}
 
@@ -87,7 +208,30 @@ Prior work on compressed medical models has targeted mobile phones~\citep{pachec
 
 \subsection{Quantization-Aware Training}
 
-The TensorFlow Model Optimization Toolkit~\citep{tfmot2023} was used to insert fake-quantization nodes into trained baselines. Fine-tuning ran 10~epochs at $10^{-5}$ learning rate. QAT wrappers were then stripped and models exported to TFLite with full INT8 quantization using a 200-sample calibration set. FP16 variants were generated for comparison.
+The TensorFlow Model Optimization Toolkit~\citep{tfmot2023} was used to insert fake-quantization nodes into trained baselines. Fine-tuning ran 10~epochs at $10^{-5}$ learning rate. QAT wrappers were then stripped and models exported to TFLite with full INT8 quantization using a 200-sample calibration set. FP16 variants were generated for comparison. Listing~\ref{lst:qat} shows the export pipeline.
+
+\begin{lstlisting}[caption={QAT pipeline: wrap, fine-tune, strip, export (\texttt{compression/qat.py}).},label=lst:qat]
+import tensorflow_model_optimization as tfmot
+
+# 1. Insert fake-quantization nodes
+qat_model = tfmot.quantization.keras.quantize_model(
+    baseline_model)
+qat_model.compile(optimizer=Adam(1e-5), loss=loss_fn)
+
+# 2. Fine-tune with quantization noise
+qat_model.fit(train_ds, epochs=10, validation_data=val_ds)
+
+# 3. Strip QAT wrappers for inference
+final_model = tfmot.quantization.keras.strip_pruning(
+    qat_model)
+
+# 4. Export to TFLite INT8
+converter = tf.lite.TFLiteConverter.from_keras_model(
+    final_model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = calib_generator
+tflite_model = converter.convert()
+\end{lstlisting}
 
 \subsection{Knowledge Distillation}
 
@@ -106,7 +250,18 @@ We adapted two mechanisms from MSA~\citep{chen2026msa} for the classification pi
 
 \textbf{KV cache pooling.} Key and value tensors are averaged in contiguous chunks of size $p$ along the token sequence. A 1D kernel of 4 compresses 196 spatial tokens (from a $14{\times}14$ patch grid) to 49 pooled tokens.
 
-\textbf{2D spatial pooling.} We introduce a grid-aware variant (\texttt{SpatialKVCachePooling2D}) that reshapes the flattened token sequence back to its $H{\times}W$ spatial grid before applying a $k_h{\times}k_w$ pooling kernel. For a $2{\times}2$ kernel on a $14{\times}14$ grid, this produces $7{\times}7{=}49$ pooled tokens while preserving spatial adjacency that 1D pooling disrupts at row boundaries.
+\textbf{2D spatial pooling.} We introduce a grid-aware variant (\texttt{SpatialKVCachePooling2D}) that reshapes the flattened token sequence back to its $H{\times}W$ spatial grid before applying a $k_h{\times}k_w$ pooling kernel. For a $2{\times}2$ kernel on a $14{\times}14$ grid, this produces $7{\times}7{=}49$ pooled tokens while preserving spatial adjacency that 1D pooling disrupts at row boundaries. Listing~\ref{lst:2d_pool} shows the core reshape-and-pool logic.
+
+\begin{lstlisting}[caption={2D spatial pooling kernel (\texttt{compression/sparse\_attention.py}).},label=lst:2d_pool]
+# Reshape: (batch, gh*gw, ...) -> (batch, gh, gw, ...)
+t_2d = tf.reshape(t[:, :gh * gw], [batch, gh, gw, ...])
+# Reshape to blocks: (batch, H//kh, kh, W//kw, kw, ...)
+t_blocks = tf.reshape(t_2d, [batch, out_h, kh, out_w, kw, ...])
+# Average over kernel dims (axes 2 and 4)
+pooled = tf.reduce_mean(t_blocks, axis=[2, 4])
+# Flatten spatial: (batch, out_h * out_w, ...)
+return tf.reshape(pooled, [batch, out_h * out_w, ...])
+\end{lstlisting}
 
 \textbf{Top-$k$ routing.} Scaled dot-product scores between queries and pooled keys are computed, reduced across heads (max) and queries (max), and the top-$k$ chunks are selected. With $k{=}8$ and 49 pooled tokens, the combined memory reduction is $24.5{\times}$.
 
