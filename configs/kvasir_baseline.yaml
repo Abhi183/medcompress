@@ -1,0 +1,47 @@
+# configs/kvasir_baseline.yaml
+# U-Net binary segmentation on Kvasir-SEG polyp dataset (baseline, no distillation)
+
+task: segmentation
+dataset: kvasir_seg
+seed: 42
+
+data:
+  root: data/kvasir-seg/
+  image_size: 256
+  batch_size: 16
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+model:
+  name: unet_lite
+  num_classes: 2            # polyp vs background (single-channel sigmoid output)
+  filters: [32, 64, 128, 256]
+  input_channels: 3         # RGB endoscopy images
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-3
+  lr_schedule: cosine
+  loss: dice_ce             # Dice + binary cross-entropy combo
+  early_stopping_patience: 10
+
+metrics:
+  - dice_coefficient
+  - iou
+  - sensitivity
+  - specificity
+
+export:
+  tflite:
+    enabled: true
+    precision: int8
+    calibration_samples: 100
+  onnx:
+    enabled: true
+
+output:
+  dir: outputs/kvasir_baseline/
+  save_best: true
+  log_wandb: false

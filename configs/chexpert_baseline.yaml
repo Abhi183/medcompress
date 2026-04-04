@@ -1,0 +1,35 @@
+# configs/chexpert_baseline.yaml
+# Baseline EfficientNetB0 on CheXpert chest X-ray multi-label classification
+
+task: classification
+dataset: chexpert
+seed: 42
+
+data:
+  root: data/chexpert/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.20
+  augmentation: true
+
+model:
+  name: efficientnetb0
+  num_classes: 5            # 5 competition labels (multi-label)
+  pretrained: imagenet
+  dropout: 0.3
+
+training:
+  epochs: 30
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: binary_crossentropy   # multi-label: independent sigmoid per label
+  class_weight: null           # not used; multi-label handled by BCE
+  early_stopping_patience: 7
+  metric: mean_auc             # mean AUC across 5 competition labels
+
+output:
+  dir: outputs/chexpert_baseline/
+  save_best: true
+  log_wandb: true
+  wandb_project: medcompress
