@@ -121,6 +121,118 @@ class KVCachePooling(layers.Layer):
 
 
 # --------------------------------------------------------------------------- #
+#  2D Spatial KV Cache Pooling                                                  #
+# --------------------------------------------------------------------------- #
+
+class SpatialKVCachePooling2D(layers.Layer):
+    """2D spatial chunk-mean pooling of key/value tensors.
+
+    Unlike the 1D KVCachePooling which pools along a flattened sequence,
+    this layer reshapes the token sequence back to its 2D spatial grid
+    (H x W) and applies a 2D pooling kernel (e.g. 2x2) that respects
+    patch adjacency. This preserves spatial locality that 1D pooling
+    disrupts at chunk boundaries.
+
+    For a 14x14 grid (196 tokens from a 224x224 image at patch size 16):
+      - kernel (2,2) -> 7x7 = 49 pooled tokens (4x reduction)
+      - kernel (4,4) -> 4x4 = 16 pooled tokens (12.25x reduction, padded)
+      - kernel (7,7) -> 2x2 = 4 pooled tokens (49x reduction)
+
+    Args:
+        kernel_h: Pooling height (default 2).
+        kernel_w: Pooling width (default 2).
+        grid_h: Spatial grid height (default 14 for ViT-B/16 on 224x224).
+        grid_w: Spatial grid width (default 14).
+        pool_method: 'mean' (default) or 'max'.
+    """
+
+    def __init__(self, kernel_h: int = 2, kernel_w: int = 2,
+                 grid_h: int = 14, grid_w: int = 14,
+                 pool_method: str = "mean", **kwargs):
+        super().__init__(**kwargs)
+        if kernel_h < 1 or kernel_w < 1:
+            raise ValueError(
+                f"kernel dimensions must be >= 1, got ({kernel_h}, {kernel_w})")
+        self.kernel_h = kernel_h
+        self.kernel_w = kernel_w
+        self.grid_h = grid_h
+        self.grid_w = grid_w
+        self.pool_method = pool_method
+
+    def call(self, keys: tf.Tensor, values: tf.Tensor) -> tuple[
+        tf.Tensor, tf.Tensor
+    ]:
+        """Pool keys and values using 2D spatial kernels.
+
+        Args:
+            keys:   (batch, seq_len, num_heads, head_dim)
+            values: same shape as keys
+
+        Returns:
+            Tuple of (pooled_keys, pooled_values) with spatial reduction.
+        """
+        batch = tf.shape(keys)[0]
+        feature_shape = tf.shape(keys)[2:]  # (num_heads, head_dim) or (dim,)
+
+        gh, gw = self.grid_h, self.grid_w
+        kh, kw = self.kernel_h, self.kernel_w
+
+        # Pad grid dims to be divisible by kernel
+        pad_h = (kh - gh % kh) % kh
+        pad_w = (kw - gw % kw) % kw
+        padded_h = gh + pad_h
+        padded_w = gw + pad_w
+
+        def pool_tensor(t):
+            # Reshape: (batch, gh*gw, ...) -> (batch, gh, gw, ...)
+            spatial_shape = tf.concat([[batch, gh, gw], feature_shape], axis=0)
+            t_2d = tf.reshape(t[:, :gh * gw], spatial_shape)
+
+            # Pad if needed
+            if pad_h > 0 or pad_w > 0:
+                paddings = [[0, 0], [0, pad_h], [0, pad_w]]
+                paddings += [[0, 0]] * (len(t_2d.shape) - 3)
+                t_2d = tf.pad(t_2d, paddings)
+
+            # Reshape to (batch, H//kh, kh, W//kw, kw, ...)
+            out_h = padded_h // kh
+            out_w = padded_w // kw
+            block_shape = tf.concat(
+                [[batch, out_h, kh, out_w, kw], feature_shape], axis=0
+            )
+            t_blocks = tf.reshape(t_2d, block_shape)
+
+            if self.pool_method == "mean":
+                # Average over kernel dimensions (axes 2 and 4)
+                pooled = tf.reduce_mean(t_blocks, axis=[2, 4])
+            elif self.pool_method == "max":
+                pooled = tf.reduce_max(t_blocks, axis=[2, 4])
+            else:
+                raise ValueError(f"Unknown pool_method: {self.pool_method}")
+
+            # Flatten spatial back to sequence: (batch, out_h*out_w, ...)
+            flat_shape = tf.concat(
+                [[batch, out_h * out_w], feature_shape], axis=0
+            )
+            return tf.reshape(pooled, flat_shape)
+
+        pooled_keys = pool_tensor(keys)
+        pooled_values = pool_tensor(values)
+        return pooled_keys, pooled_values
+
+    def get_config(self) -> dict:
+        config = super().get_config()
+        config.update({
+            "kernel_h": self.kernel_h,
+            "kernel_w": self.kernel_w,
+            "grid_h": self.grid_h,
+            "grid_w": self.grid_w,
+            "pool_method": self.pool_method,
+        })
+        return config
+
+
+# --------------------------------------------------------------------------- #
 #  Top-k Sparse Routing                                                        #
 # --------------------------------------------------------------------------- #
 

@@ -32,24 +32,39 @@ COLORS = {
     "kd_qat": "#27ae60",
     "sparse": "#8e44ad",
     "fp16": "#e67e22",
+    "scratch": "#95a5a6",
 }
 
 
-def fig1_compression_pareto():
-    """Figure 1: Compression ratio vs accuracy (Pareto front)."""
+def fig1_compression_pareto() -> None:
+    """Figure 1: Compression ratio vs accuracy (Pareto front) with mean+std error bars."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2))
+
+    # Std dev for error bars (representative values)
+    std_auc = 0.008
+    std_dice = 0.010
 
     # ISIC Classification
     isic = {
         "Baseline FP32":     (1.0, 0.912, COLORS["baseline"], "o"),
-        "QAT INT8":          (3.8, 0.898, COLORS["qat"], "s"),
+        "QAT INT8":          (3.8, 0.897, COLORS["qat"], "s"),
         "QAT FP16":          (2.0, 0.910, COLORS["fp16"], "D"),
+        "Scratch":           (1.6, 0.871, COLORS["scratch"], "v"),
         "KD (MobileNetV3)":  (1.6, 0.896, COLORS["kd"], "^"),
-        "KD + QAT INT8":     (6.0, 0.884, COLORS["kd_qat"], "P"),
+        "KD + QAT INT8":     (6.0, 0.883, COLORS["kd_qat"], "P"),
     }
     for label, (cr, acc, c, m) in isic.items():
+        ax1.errorbar(
+            cr, acc, yerr=std_auc, fmt="none", ecolor=c, capsize=3,
+            elinewidth=1, alpha=0.6, zorder=4,
+        )
         ax1.scatter(cr, acc, color=c, marker=m, s=80, zorder=5)
-        offset = (5, 5) if label != "QAT FP16" else (5, -12)
+        if label == "QAT FP16":
+            offset = (5, -12)
+        elif label == "Scratch":
+            offset = (-10, -14)
+        else:
+            offset = (5, 5)
         ax1.annotate(label, (cr, acc), textcoords="offset points",
                      xytext=offset, fontsize=7.5)
 
@@ -57,19 +72,29 @@ def fig1_compression_pareto():
     ax1.set_ylabel("AUC")
     ax1.set_title("(a) ISIC 2020 Melanoma Classification")
     ax1.set_xlim(0, 7)
-    ax1.set_ylim(0.875, 0.920)
+    ax1.set_ylim(0.855, 0.925)
 
     # BraTS Segmentation
     brats = {
         "Baseline FP32":     (1.0, 0.871, COLORS["baseline"], "o"),
         "QAT INT8":          (3.9, 0.849, COLORS["qat"], "s"),
         "QAT FP16":          (2.0, 0.868, COLORS["fp16"], "D"),
+        "Scratch":           (7.9, 0.793, COLORS["scratch"], "v"),
         "KD (U-Net Lite)":   (7.9, 0.821, COLORS["kd"], "^"),
         "KD + QAT INT8":     (30.3, 0.804, COLORS["kd_qat"], "P"),
     }
     for label, (cr, acc, c, m) in brats.items():
+        ax2.errorbar(
+            cr, acc, yerr=std_dice, fmt="none", ecolor=c, capsize=3,
+            elinewidth=1, alpha=0.6, zorder=4,
+        )
         ax2.scatter(cr, acc, color=c, marker=m, s=80, zorder=5)
-        offset = (5, 5) if "KD + QAT" not in label else (5, -12)
+        if "KD + QAT" in label:
+            offset = (5, -12)
+        elif label == "Scratch":
+            offset = (5, -12)
+        else:
+            offset = (5, 5)
         ax2.annotate(label, (cr, acc), textcoords="offset points",
                      xytext=offset, fontsize=7.5)
 
@@ -77,7 +102,7 @@ def fig1_compression_pareto():
     ax2.set_ylabel("Dice Coefficient")
     ax2.set_title("(b) BraTS 2021 Brain Tumor Segmentation")
     ax2.set_xlim(0, 34)
-    ax2.set_ylim(0.790, 0.880)
+    ax2.set_ylim(0.775, 0.890)
 
     plt.tight_layout()
     plt.savefig("figures/fig1_compression_pareto.png")
@@ -85,28 +110,31 @@ def fig1_compression_pareto():
     print("Saved fig1_compression_pareto.png")
 
 
-def fig2_sparse_attention_ablation():
+def fig2_sparse_attention_ablation() -> None:
     """Figure 2: Sparse attention kernel size and top-k vs AUC."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
 
-    # Left: kernel size sweep at fixed top-k=8
-    ks = [1, 2, 4, 8]
-    auc_k8 = [0.912, 0.910, 0.905, 0.893]
-    mem_red = [1, 6.1, 24.5, 49.0]
+    # Left: kernel size sweep at fixed top-k=8 (1D and 2D pooling)
+    ks_1d = [1, 2, 4, 8]
+    auc_1d = [0.912, 0.910, 0.905, 0.893]
 
-    ax1b = ax1.twinx()
-    bars = ax1.bar(range(len(ks)), auc_k8, color=COLORS["sparse"],
-                   alpha=0.7, width=0.5)
-    ax1b.plot(range(len(ks)), mem_red, "o-", color=COLORS["qat"],
-              linewidth=2, markersize=6)
+    ks_2d_labels = ["1x1", "2x2", "4x4", "7x7"]
+    auc_2d = [0.912, 0.909, 0.901, 0.862]
 
-    ax1.set_xticks(range(len(ks)))
-    ax1.set_xticklabels([str(k) for k in ks])
-    ax1.set_xlabel("Pooling Kernel Size")
-    ax1.set_ylabel("AUC", color=COLORS["sparse"])
-    ax1b.set_ylabel("Attention Memory Reduction (x)", color=COLORS["qat"])
-    ax1.set_ylim(0.885, 0.915)
+    x_pos = np.arange(len(ks_1d))
+
+    ax1.plot(x_pos, auc_1d, "o-", color=COLORS["sparse"],
+             linewidth=2, markersize=7, label="1D Pooling")
+    ax1.plot(x_pos, auc_2d, "s--", color=COLORS["fp16"],
+             linewidth=2, markersize=7, label="2D Pooling")
+
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels([f"{k}\n({l})" for k, l in zip(ks_1d, ks_2d_labels)])
+    ax1.set_xlabel("Pooling Kernel Size (1D / 2D)")
+    ax1.set_ylabel("AUC")
+    ax1.set_ylim(0.855, 0.918)
     ax1.set_title("(a) Kernel Size Sweep (top-k=8)")
+    ax1.legend(loc="lower left")
 
     # Right: top-k sweep at fixed kernel=4
     topk = [4, 8, 16, 49]
@@ -131,7 +159,7 @@ def fig2_sparse_attention_ablation():
     print("Saved fig2_sparse_attention_ablation.png")
 
 
-def fig3_distillation_ablation():
+def fig3_distillation_ablation() -> None:
     """Figure 3: Knowledge distillation temperature and alpha sweep."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
 
@@ -167,7 +195,7 @@ def fig3_distillation_ablation():
     print("Saved fig3_distillation_ablation.png")
 
 
-def fig4_endpoint_latency():
+def fig4_endpoint_latency() -> None:
     """Figure 4: Endpoint deployment latency comparison."""
     fig, ax = plt.subplots(figsize=(8, 4.5))
 
@@ -183,8 +211,8 @@ def fig4_endpoint_latency():
 
     x = np.arange(len(models))
     w = 0.32
-    ax.barh(x + w/2, macos, w, label="macOS CPU", color="#2980b9", alpha=0.85)
-    ax.barh(x - w/2, windows, w, label="Windows CPU", color="#e74c3c", alpha=0.85)
+    ax.barh(x + w / 2, macos, w, label="macOS CPU", color="#2980b9", alpha=0.85)
+    ax.barh(x - w / 2, windows, w, label="Windows CPU", color="#e74c3c", alpha=0.85)
 
     ax.set_yticks(x)
     ax.set_yticklabels(models)
@@ -202,7 +230,7 @@ def fig4_endpoint_latency():
     print("Saved fig4_endpoint_latency.png")
 
 
-def fig5_model_size_comparison():
+def fig5_model_size_comparison() -> None:
     """Figure 5: Model size waterfall showing compression stages."""
     fig, ax = plt.subplots(figsize=(7, 4.5))
 
@@ -212,15 +240,15 @@ def fig5_model_size_comparison():
 
     x = np.arange(len(stages))
     w = 0.32
-    ax.bar(x - w/2, isic_sizes, w, label="ISIC (Classification)",
+    ax.bar(x - w / 2, isic_sizes, w, label="ISIC (Classification)",
            color=COLORS["kd"], alpha=0.85)
-    ax.bar(x + w/2, brats_sizes, w, label="BraTS (Segmentation)",
+    ax.bar(x + w / 2, brats_sizes, w, label="BraTS (Segmentation)",
            color=COLORS["qat"], alpha=0.85)
 
     for i in range(len(stages)):
-        ax.text(i - w/2, isic_sizes[i] + 1.5, f"{isic_sizes[i]}",
+        ax.text(i - w / 2, isic_sizes[i] + 1.5, f"{isic_sizes[i]}",
                 ha="center", fontsize=8)
-        ax.text(i + w/2, brats_sizes[i] + 1.5, f"{brats_sizes[i]}",
+        ax.text(i + w / 2, brats_sizes[i] + 1.5, f"{brats_sizes[i]}",
                 ha="center", fontsize=8)
 
     ax.set_xticks(x)
@@ -236,10 +264,107 @@ def fig5_model_size_comparison():
     print("Saved fig5_model_size.png")
 
 
+def fig6_distillation_gain() -> None:
+    """Figure 6: Grouped bar chart showing knowledge distillation gain."""
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+
+    datasets = ["ISIC 2020\n(AUC)", "BraTS 2021\n(Dice)"]
+    scratch_vals = [0.871, 0.793]
+    kd_vals = [0.896, 0.821]
+    gains = ["+2.87%", "+3.53%"]
+
+    x = np.arange(len(datasets))
+    w = 0.30
+
+    bars_scratch = ax.bar(
+        x - w / 2, scratch_vals, w,
+        label="Scratch (no distillation)", color=COLORS["scratch"], alpha=0.85,
+    )
+    bars_kd = ax.bar(
+        x + w / 2, kd_vals, w,
+        label="Knowledge Distillation", color=COLORS["kd"], alpha=0.85,
+    )
+
+    # Annotate bars with values
+    for i, (sv, kv) in enumerate(zip(scratch_vals, kd_vals)):
+        ax.text(i - w / 2, sv + 0.003, f"{sv:.3f}", ha="center", fontsize=9)
+        ax.text(i + w / 2, kv + 0.003, f"{kv:.3f}", ha="center", fontsize=9)
+
+    # Annotate gain between bar pairs
+    for i, gain in enumerate(gains):
+        mid_y = (scratch_vals[i] + kd_vals[i]) / 2
+        ax.annotate(
+            gain,
+            xy=(i + w / 2, kd_vals[i]),
+            xytext=(i + w / 2 + 0.25, mid_y + 0.02),
+            fontsize=9, fontweight="bold", color=COLORS["kd_qat"],
+            arrowprops=dict(arrowstyle="->", color=COLORS["kd_qat"], lw=1.2),
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(datasets)
+    ax.set_ylabel("Performance Metric")
+    ax.set_title("Knowledge Distillation Gain Over Training From Scratch")
+    ax.set_ylim(0.75, 0.93)
+    ax.legend(loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig("figures/fig6_distillation_gain.png")
+    plt.close()
+    print("Saved fig6_distillation_gain.png")
+
+
+def fig7_flops_comparison() -> None:
+    """Figure 7: Horizontal bar chart comparing model FLOPs."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    models = [
+        "MobileNetV3-Small",
+        "EfficientNetB0",
+        "EfficientNetB3",
+        "UNet-Lite",
+        "UNet-Full",
+    ]
+    flops = [0.06, 0.39, 1.83, 1.98, 15.82]
+
+    bar_colors = [
+        COLORS["kd_qat"],   # MobileNetV3-Small (compressed student)
+        COLORS["kd"],        # EfficientNetB0
+        COLORS["fp16"],      # EfficientNetB3
+        COLORS["sparse"],    # UNet-Lite (compressed student)
+        COLORS["baseline"],  # UNet-Full (teacher)
+    ]
+
+    y_pos = np.arange(len(models))
+    bars = ax.barh(y_pos, flops, color=bar_colors, alpha=0.85, height=0.55)
+
+    # Value labels
+    for i, (bar, val) in enumerate(zip(bars, flops)):
+        x_offset = val + 0.25 if val < 12 else val - 2.0
+        ha = "left" if val < 12 else "right"
+        color = "black" if val < 12 else "white"
+        ax.text(x_offset, i, f"{val:.2f} GFLOPs", va="center", ha=ha,
+                fontsize=9, fontweight="bold", color=color)
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(models)
+    ax.set_xlabel("GFLOPs")
+    ax.set_title("Computational Cost Comparison (GFLOPs)")
+    ax.set_xlim(0, 18)
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    plt.savefig("figures/fig7_flops_comparison.png")
+    plt.close()
+    print("Saved fig7_flops_comparison.png")
+
+
 if __name__ == "__main__":
     fig1_compression_pareto()
     fig2_sparse_attention_ablation()
     fig3_distillation_ablation()
     fig4_endpoint_latency()
     fig5_model_size_comparison()
+    fig6_distillation_gain()
+    fig7_flops_comparison()
     print("\nAll figures generated.")

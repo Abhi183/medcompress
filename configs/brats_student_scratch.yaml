@@ -1,0 +1,34 @@
+# configs/brats_student_scratch.yaml
+# Train U-Net Lite from scratch (no distillation)
+# Used to measure "distillation gain" against KD-trained student
+
+task: segmentation
+dataset: brats
+seed: 42
+
+data:
+  root: data/brats/BraTS2021_Training_Data/
+  modalities: [t1, t1ce, t2, flair]
+  n_slices: 3
+  patch_size: 128
+  batch_size: 16
+  val_split: 0.15
+  test_split: 0.15
+
+model:
+  name: unet_lite
+  num_classes: 4
+  filters: [32, 64, 128, 256]
+
+training:
+  epochs: 50
+  optimizer: adam
+  learning_rate: 1.0e-3
+  lr_schedule: cosine
+  loss: dice_ce
+  early_stopping_patience: 10
+
+output:
+  dir: outputs/brats_student_scratch/
+  save_best: true
+  log_wandb: false

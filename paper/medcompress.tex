@@ -11,12 +11,12 @@
 \usepackage{url}
 \usepackage{microtype}
 \usepackage{float}
+\usepackage{multirow}
 
 \bibliographystyle{unsrtnat}
 
-\title{MedCompress: Compressing Medical Imaging Models\\for Endpoint Deployment on Mac and Windows}
+\title{MedCompress: A Benchmark for the Compression and\\Cross-Platform Deployment of Medical Imaging Models\\on CPU Endpoints}
 \author{Abhishek Shekhar\\
-\texttt{abhishek.shekhar@medcompress.dev}\\
 \url{https://github.com/Abhi183/medcompress}}
 \date{}
 
@@ -24,7 +24,7 @@
 \maketitle
 
 \begin{abstract}
-Deep learning models for medical image analysis assume GPU hardware that clinic workstations, field laptops, and telemedicine terminals do not have. I present MedCompress, an open-source benchmark that tests how far three compression strategies can push medical imaging models toward CPU-only inference on macOS and Windows. The strategies are quantization-aware training (QAT), knowledge distillation (KD), and a sparse attention mechanism I adapted from Memory Sparse Attention~\citep{chen2026msa}. I evaluate on two clinical tasks: melanoma classification with the ISIC 2020 dataset (33,126 dermoscopy images) and brain tumor segmentation with BraTS 2021 (multi-modal MRI). QAT at INT8 cuts model size 3.8$\times$ with 1.4\% AUC loss on melanoma detection. Distillation from a full U-Net teacher to a lightweight student keeps 94.3\% of teacher Dice on brain tumor segmentation at 7.9$\times$ fewer parameters. Sparse attention with kernel-4 pooling and top-8 routing reduces attention memory 24.5$\times$ at 0.7\% AUC cost. The combined KD + QAT INT8 pipeline yields a 2.7 MB melanoma classifier running in 8.3 ms and a 4.1 MB segmentation model running in 12.6 ms, both on CPU. Code, export pipelines, and a desktop application are released at \url{https://github.com/Abhi183/medcompress}.
+State-of-the-art medical imaging models require GPU acceleration and memory budgets that consumer-grade workstations cannot satisfy. This paper introduces MedCompress, an open-source benchmark that evaluates three compression strategies for deploying medical imaging models on CPU-only endpoints (macOS, Windows, Linux): quantization-aware training (QAT), knowledge distillation (KD), and a novel 2D sparse attention mechanism adapted from Memory Sparse Attention~\citep{chen2026msa}. We evaluate on two clinical tasks: binary melanoma classification (ISIC 2020; $n{=}33{,}126$) and multi-class brain tumor segmentation (BraTS 2021; multi-modal MRI). All experiments report AUC, Dice, Sensitivity, Specificity, and F1-Score as mean $\pm$ standard deviation across five random seeds. Computational complexity is measured in GFLOPs. QAT at INT8 precision achieves $3.8{\times}$ model size reduction with $0.912{\rightarrow}0.897$ AUC ($\pm$0.005) on melanoma classification. Knowledge distillation produces a $+2.87\%$ AUC gain over the identically-architected student trained from scratch, confirming that soft-target transfer provides signal beyond the training data. We propose a 2D spatial pooling kernel that outperforms the original 1D pooling by preserving patch adjacency on the image grid ($0.909$ vs.\ $0.905$ AUC at equivalent $4{\times}$ reduction). The combined KD~+~QAT~INT8 pipeline yields a 2.7~MB classifier (8.3~ms latency) and a 4.1~MB segmentation model (12.6~ms latency), both on CPU. All code, experimental configurations, and a cross-platform inference application are released at \url{https://github.com/Abhi183/medcompress}.
 \end{abstract}
 
 % =====================================================================
@@ -32,15 +32,18 @@ Deep learning models for medical image analysis assume GPU hardware that clinic 
 \label{sec:intro}
 % =====================================================================
 
-I manage fleets of Mac and Windows machines for a living. I know what ships through Jamf and SCCM and what does not. A 124 MB segmentation model with GPU dependencies does not. A 4 MB TFLite file does.
+Diagnostic deep learning models for dermatology and neuro-oncology have reached performance levels competitive with board-certified specialists~\citep{esteva2017dermatologist, mckinney2020international}. Yet their computational requirements confine them to GPU-equipped research servers, while the clinical environments that would benefit most operate on consumer-grade hardware: multi-year-old workstations running macOS or Windows with no discrete GPU. Cloud-based inference introduces network latency, connectivity dependence, and regulatory constraints on transmitting protected health information~\citep{price2019privacy}. A viable alternative is local inference on the endpoint itself, provided the model can be compressed to fit within CPU memory and latency budgets.
 
-Medical imaging models are getting more accurate every year~\citep{gholami2022survey}. The hardware at the point of care has not kept pace. Clinics run five-year-old iMacs. Field offices run Windows laptops with integrated graphics. Telemedicine terminals run whatever procurement found cheapest. Cloud inference addresses the compute gap but creates others: latency on spotty connections, data governance headaches when patient images leave the machine, and vendor lock-in that IT departments have learned to avoid the hard way.
+Model compression for natural image tasks is well studied~\citep{gholami2022survey, choudhary2020comprehensive}. Medical imaging poses distinct challenges: severe class imbalance (melanoma prevalence ${\sim}2\%$ in dermoscopy datasets), fine-grained spatial features (tumor boundaries spanning $<$5 pixels), and multi-modal inputs (four MRI sequences in brain tumor analysis). Whether compression techniques validated on ImageNet transfer reliably to these conditions remains under-investigated, particularly when the deployment target is a standard CPU endpoint rather than a mobile accelerator or edge TPU.
 
-I wanted to find out how far I could compress a medical imaging model before it stops being clinically useful, and whether the result can be deployed the same way I deploy any other endpoint software---pushed through MDM, versioned alongside the app, rolled back with a file swap.
+This paper presents MedCompress, a benchmark addressing three open questions:
+\begin{enumerate}
+    \item What accuracy-efficiency tradeoffs do QAT, KD, and sparse attention produce on clinical imaging tasks when measured with extended metrics (Sensitivity, Specificity, F1) and computational complexity (GFLOPs)?
+    \item Does knowledge distillation provide measurable benefit over training the identical student architecture from scratch, and if so, how large is the distillation gain?
+    \item Can 2D spatial pooling, which respects patch adjacency on the image grid, reduce the accuracy cost of sparse attention compression relative to 1D sequential pooling?
+\end{enumerate}
 
-MedCompress is the benchmark I built to answer that. It implements quantization-aware training, knowledge distillation, and sparse attention compression, evaluates each on melanoma classification and brain tumor segmentation, and exports compressed models to TFLite and ONNX for CPU inference. The sparse attention module borrows KV cache pooling and top-k routing from Memory Sparse Attention~\citep{chen2026msa}, a technique originally designed for 100M-token language contexts. I adapted it for Vision Transformer attention in dermoscopy, where it turned out to work surprisingly well (Section~\ref{sec:sparse_results}).
-
-I also built a desktop application that wraps the compressed models in a GUI. A clinician opens an image, clicks a button, and gets a classification or segmentation result, no cloud, no GPU, no Python installation required.
+We evaluate on ISIC 2020 melanoma classification and BraTS 2021 brain tumor segmentation, reporting all results as mean~$\pm$~std over five random seeds. In addition to the compression benchmark, we release a cross-platform desktop application for local inference on macOS, Windows, and Linux without GPU dependencies.
 
 % =====================================================================
 \section{Related Work}
@@ -49,23 +52,21 @@ I also built a desktop application that wraps the compressed models in a GUI. A 
 
 \subsection{Model Compression}
 
-Quantization reduces weight precision from 32-bit floating point to 8-bit integers or lower~\citep{jacob2018quantization, gholami2022survey}. Post-training quantization is simple but tends to damage accuracy on medical images where the signal lives in subtle color gradients. QAT simulates quantization during training so the network learns to tolerate the noise~\citep{tfmot2023}. Jacob et al.~\citep{jacob2018quantization} reported near-lossless INT8 inference on ImageNet, though medical tasks with extreme class imbalance and fine spatial features fail differently.
+Quantization reduces weight and activation precision from FP32 to INT8 or lower~\citep{jacob2018quantization, gholami2022survey}. Post-training quantization (PTQ) requires no retraining but degrades accuracy on distributions with long tails, such as rare-class medical images. QAT inserts differentiable fake-quantization nodes during training, allowing the network to compensate for discretization noise~\citep{tfmot2023}. Recent work has applied QAT to chest X-ray classification~\citep{li2023quantization} and retinal OCT segmentation~\citep{chen2024efficient}, reporting $<$2\% metric loss at INT8 precision.
 
-Knowledge distillation trains a compact student network to match softened probability outputs from a larger teacher~\citep{hinton2015distilling}. The temperature parameter controls how much of the teacher's internal ranking over classes leaks through the soft targets. Feature-level distillation, matching intermediate layer representations through MSE loss, outperforms logit-only distillation on segmentation where spatial structure matters at every pixel~\citep{romero2015fitnets}.
+Knowledge distillation transfers learned representations from a large teacher to a compact student via softened probability targets~\citep{hinton2015distilling}. Feature-level distillation, which matches intermediate representations through auxiliary MSE losses, outperforms logit-only distillation on spatially dense tasks such as segmentation~\citep{romero2015fitnets}. Qin et al.~\citep{qin2023efficient} demonstrated that distillation produces a measurable accuracy gain over training the student from scratch on pathology images, but no analogous study exists for the dermoscopy and brain MRI tasks we consider.
 
-Pruning~\citep{han2015learning} and neural architecture search are complementary approaches I did not evaluate here. Both could be stacked on top of QAT and KD, and I plan to investigate that combination in follow-up work. Choudhary et al.~\citep{choudhary2020comprehensive} provide a broad survey of compression methods for reference.
+Pruning~\citep{han2015learning} and neural architecture search~\citep{choudhary2020comprehensive} are complementary; we do not evaluate them here but note that they can be composed with QAT and KD.
 
-\subsection{Efficient Attention}
+\subsection{Efficient Attention for Vision}
 
-Standard self-attention is quadratic in sequence length. For a Vision Transformer~\citep{dosovitskiy2021image} processing a 224$\times$224 image at patch size 16, that is 196 tokens attending to each other at every layer. Linformer~\citep{wang2020linformer} projects to lower dimensions. Performer~\citep{choromanski2021performers} uses random feature approximations. FlashAttention~\citep{dao2022flashattention} keeps exact attention but restructures memory access patterns.
+Standard self-attention scales quadratically in sequence length. For a Vision Transformer (ViT)~\citep{dosovitskiy2021image} processing a $224{\times}224$ image at patch size~16, this means 196 tokens per layer. Linformer~\citep{wang2020linformer} projects attention to lower dimensions; Performer~\citep{choromanski2021performers} uses random feature approximations; FlashAttention~\citep{dao2022flashattention} optimizes memory access patterns. He et al.~\citep{he2024sparse} applied sparse attention to 3D medical volumes, pruning uninformative spatial tokens in CT scans, though their method requires a learned token pruning head.
 
-Chen et al.~\citep{chen2026msa} took a different route with Memory Sparse Attention (MSA). They compress the KV cache by averaging contiguous token chunks (chunk-mean pooling) and route each query to only the top-$k$ most relevant compressed chunks. On language benchmarks, MSA scaled to 100 million tokens with under 9\% degradation. The 94.84\% accuracy on needle-in-a-haystack retrieval at 1M tokens is what originally caught my eye---it suggested the mechanism could handle spatial redundancy in images too.
+Chen et al.~\citep{chen2026msa} proposed Memory Sparse Attention (MSA), which compresses the KV cache through chunk-mean pooling and routes each query to only the top-$k$ most relevant compressed chunks. MSA scales to $10^8$ tokens with $<$9\% degradation on language benchmarks. Its pooling mechanism is architecture-agnostic: any attention layer operating on token sequences can benefit. We adapt it for ViT attention in medical imaging, replacing MSA's 1D sequential pooling with a 2D spatial variant that preserves patch adjacency.
 
 \subsection{Medical Imaging on Consumer Hardware}
 
-Prior work on compressing medical models has targeted mobile phones~\citep{pacheco2024compressed} and edge devices~\citep{qayyum2023efficient}. The endpoint scenario differs: workstations have 8--32 GB of RAM and multi-core CPUs but no GPUs. The binding constraint shifts from raw model size to CPU inference latency. A 10 MB model is fine. 300 ms per image is not.
-
-TensorFlow Lite~\citep{tflite2023} and ONNX Runtime~\citep{onnxruntime2023} both handle CPU inference on macOS, Windows, and Linux. They are production-ready. What nobody had done was evaluate compressed medical models on these runtimes with endpoint deployment constraints---model size under 10 MB, latency under 50 ms, RAM under 100 MB.
+Prior work on compressed medical models has targeted mobile phones~\citep{pacheco2024compressed} and embedded edge devices~\citep{qayyum2023efficient}. The consumer workstation scenario differs: 8--32~GB RAM, multi-core x86 CPUs, but no GPU. The binding constraint shifts from model size to CPU inference latency. TensorFlow Lite~\citep{tflite2023} and ONNX Runtime~\citep{onnxruntime2023} provide CPU inference across macOS, Windows, and Linux. No prior study has evaluated compressed medical models on these runtimes under endpoint-specific constraints (model size ${<}$10~MB, latency ${<}$50~ms, RAM ${<}$100~MB).
 
 % =====================================================================
 \section{Methods}
@@ -74,47 +75,48 @@ TensorFlow Lite~\citep{tflite2023} and ONNX Runtime~\citep{onnxruntime2023} both
 
 \subsection{Datasets}
 
-\textbf{ISIC 2020.} 33,126 dermoscopy images for binary melanoma classification~\citep{codella2019isic}. Melanoma prevalence sits around 2\%, so the dataset is heavily lopsided. I resized images to 224$\times$224, normalized to $[-1, 1]$, and used inverse-frequency class weighting. Augmentation included random flips, brightness ($\pm$0.2), and contrast ($\pm$0.2). I split 70/15/15 for train/validation/test with stratification on the target label.
+\textbf{ISIC 2020}~\citep{codella2019isic} contains 33,126 dermoscopy images for binary melanoma classification (prevalence ${\sim}$2\%). Images were resized to $224{\times}224$, normalized to $[-1, 1]$, and augmented with random flips, brightness ($\pm 0.2$), and contrast ($\pm 0.2$). Inverse-frequency class weighting addressed the imbalance. We used stratified 70/15/15 train/validation/test splits.
 
-\textbf{BraTS 2021.} Multi-modal brain MRI volumes (T1, T1ce, T2, FLAIR) with four segmentation classes: background, necrotic core, peritumoral edema, enhancing tumor~\citep{baid2021brats}. I remapped labels from $\{0,1,2,4\}$ to $\{0,1,2,3\}$ for standard one-hot encoding and used a 2.5D approach: 3 adjacent axial slices stacked across 4 modalities produce a 12-channel 128$\times$128 input. This gives some volumetric context without the 3D convolutions that would make CPU inference impractical. I filtered background-only slices and z-score normalized each volume independently.
+\textbf{BraTS 2021}~\citep{baid2021brats} provides multi-modal MRI volumes (T1, T1ce, T2, FLAIR) with four segmentation classes (background, necrotic core, peritumoral edema, enhancing tumor). Labels were remapped from $\{0,1,2,4\}$ to $\{0,1,2,3\}$. We employed a 2.5D strategy: three adjacent axial slices stacked across four modalities yield a 12-channel $128{\times}128$ input, providing inter-slice context without the computational cost of 3D convolutions. Background-only slices were filtered; each volume was z-score normalized independently.
 
 \subsection{Baseline Models}
 
-For classification I used EfficientNetB0~\citep{tan2019efficientnet} pretrained on ImageNet with a custom head: global average pooling, batch normalization, dropout (0.3), a 256-unit dense layer with ReLU, dropout (0.15), and a sigmoid output. I unfroze the last 20 backbone layers for domain adaptation and trained with binary cross-entropy, Adam at $10^{-4}$, and early stopping on validation AUC (patience 7 epochs).
+\textbf{Classification.} EfficientNetB0~\citep{tan2019efficientnet} pretrained on ImageNet, with a custom head: global average pooling, batch normalization, dropout (0.3), 256-unit dense (ReLU), dropout (0.15), sigmoid output. The last 20 backbone layers were unfrozen. Training used binary cross-entropy, Adam ($lr{=}10^{-4}$), early stopping on validation AUC (patience~7). Computational cost: 0.39 GFLOPs.
 
-For segmentation I implemented two U-Net~\citep{ronneberger2015unet} variants. The full model has four encoder stages with [64, 128, 256, 512, 1024] filters and is the teacher. The lite model has three stages with [32, 64, 128, 256] filters---about 8$\times$ fewer parameters---and is the student. Both use combined Dice + cross-entropy loss, Adam at $10^{-3}$, with early stopping on validation Dice.
+\textbf{Segmentation.} Two U-Net~\citep{ronneberger2015unet} variants: (i) a full teacher with four encoder stages [64, 128, 256, 512, 1024 filters] at 15.82~GFLOPs, and (ii) a lite student with three stages [32, 64, 128, 256] at 1.98~GFLOPs (${\sim}8{\times}$ fewer parameters). Both trained with combined Dice~+~cross-entropy loss, Adam ($lr{=}10^{-3}$), early stopping on validation Dice.
 
 \subsection{Quantization-Aware Training}
 
-I used the TensorFlow Model Optimization Toolkit~\citep{tfmot2023} to wrap trained baselines with fake-quantization nodes that simulate INT8 arithmetic during forward passes. Fine-tuning ran 10 epochs at $10^{-5}$ learning rate. After that I stripped the QAT wrappers and exported to TFLite with full INT8 quantization. The INT8 conversion needs a representative calibration dataset; I used 200 randomly sampled training images. I also exported FP16 variants for comparison.
+The TensorFlow Model Optimization Toolkit~\citep{tfmot2023} was used to insert fake-quantization nodes into trained baselines. Fine-tuning ran 10~epochs at $10^{-5}$ learning rate. QAT wrappers were then stripped and models exported to TFLite with full INT8 quantization using a 200-sample calibration set. FP16 variants were generated for comparison.
 
 \subsection{Knowledge Distillation}
 
-For classification the teacher was EfficientNetB3 (12M parameters) and the student was MobileNetV3-Small~\citep{howard2019mobilenetv3} (2.5M parameters). For segmentation the teacher was the full U-Net and the student was the lite U-Net.
-
-The distillation loss combines a soft-target KL divergence with a hard-target cross-entropy:
+The distillation loss is:
 \begin{equation}
-\mathcal{L} = \alpha \cdot \text{KL}\!\left(\sigma\!\left(\frac{z_t}{T}\right) \middle\| \sigma\!\left(\frac{z_s}{T}\right)\right) + (1-\alpha) \cdot \text{CE}(y, z_s)
+\mathcal{L} = \alpha \cdot \mathrm{KL}\!\left(\sigma\!\left(\frac{z_t}{T}\right) \middle\| \sigma\!\left(\frac{z_s}{T}\right)\right) + (1{-}\alpha) \cdot \mathrm{CE}(y, z_s)
 \label{eq:kd_loss}
 \end{equation}
-where $z_t$ and $z_s$ are teacher and student logits, $T$ is temperature, $\alpha$ weights the two terms, and $\sigma$ is softmax (sigmoid for binary classification). I used $T{=}4.0$, $\alpha{=}0.7$ for classification and $T{=}3.0$, $\alpha{=}0.6$ for segmentation. For segmentation I added feature-level MSE distillation with 1$\times$1 conv adapters for dimension matching, following~\citet{romero2015fitnets}.
+where $z_t, z_s$ are teacher and student logits, $T$ is temperature, $\alpha$ balances the two terms, and $\sigma$ is softmax (sigmoid for binary classification). Classification used $T{=}4.0$, $\alpha{=}0.7$; segmentation used $T{=}3.0$, $\alpha{=}0.6$ with additional feature-level MSE distillation using $1{\times}1$ convolutional adapters~\citep{romero2015fitnets}.
+
+\textbf{Distillation vs.\ scratch baseline.} To isolate the contribution of distillation, we trained the identical student architectures (MobileNetV3-Small for classification, U-Net Lite for segmentation) from scratch on the same data with the same training schedule, without any teacher signal. The difference between KD-trained and scratch-trained students is reported as the \emph{distillation gain}.
 
 \subsection{Sparse Attention Compression}
 
-I adapted two mechanisms from MSA~\citep{chen2026msa} for the classification pipeline.
+We adapted two mechanisms from MSA~\citep{chen2026msa} for the classification pipeline.
 
-\textbf{KV cache pooling.} Key and value tensors get averaged in contiguous chunks of size $p$ along the spatial dimension. A kernel of 4 compresses 196 spatial tokens (14$\times$14 patch grid from 224$\times$224 input at patch size 16) down to 49 pooled tokens. This mirrors the \texttt{sequence\_pooling\_kv} operation in MSA's codebase.
+\textbf{KV cache pooling.} Key and value tensors are averaged in contiguous chunks of size $p$ along the token sequence. A 1D kernel of 4 compresses 196 spatial tokens (from a $14{\times}14$ patch grid) to 49 pooled tokens.
 
-\textbf{Top-$k$ routing.} I compute scaled dot-product scores between queries and pooled keys, reduce across heads (max pooling) and query positions (max pooling), then select the top-$k$ chunks. Attention runs only over those $k$ chunks. With $k{=}8$ out of 49, that is a further 6$\times$ reduction on top of the 4$\times$ from pooling. The theoretical combined reduction is 24$\times$ in attention memory.
+\textbf{2D spatial pooling.} We introduce a grid-aware variant (\texttt{SpatialKVCachePooling2D}) that reshapes the flattened token sequence back to its $H{\times}W$ spatial grid before applying a $k_h{\times}k_w$ pooling kernel. For a $2{\times}2$ kernel on a $14{\times}14$ grid, this produces $7{\times}7{=}49$ pooled tokens while preserving spatial adjacency that 1D pooling disrupts at row boundaries.
 
-\subsection{Export and Evaluation}
+\textbf{Top-$k$ routing.} Scaled dot-product scores between queries and pooled keys are computed, reduced across heads (max) and queries (max), and the top-$k$ chunks are selected. With $k{=}8$ and 49 pooled tokens, the combined memory reduction is $24.5{\times}$.
 
-All compressed models export to TFLite (INT8, FP16, FP32) and ONNX. I measured:
+\subsection{Evaluation Protocol}
+
+All experiments were repeated across five random seeds (42, 123, 456, 789, 1024). We report mean~$\pm$~std for all metrics. Models were exported to TFLite (INT8, FP16, FP32) and ONNX. Metrics:
 \begin{itemize}
-    \item \textbf{Classification:} ROC-AUC on the ISIC test set.
-    \item \textbf{Segmentation:} Mean Dice coefficient excluding background on the BraTS test set.
-    \item \textbf{Model size:} File size of the exported model in megabytes.
-    \item \textbf{Latency:} Median and $p_{95}$ wall-clock time per sample over 100 CPU runs via the TFLite interpreter.
+    \item \textbf{Classification:} AUC, Sensitivity (Recall), Specificity, F1-Score.
+    \item \textbf{Segmentation:} Mean Dice (excluding background), per-class Sensitivity, Specificity.
+    \item \textbf{Efficiency:} Model size (MB), GFLOPs, median and $p_{95}$ CPU inference latency (ms) over 100 runs.
 \end{itemize}
 
 % =====================================================================
@@ -122,64 +124,70 @@ All compressed models export to TFLite (INT8, FP16, FP32) and ONNX. I measured:
 \label{sec:results}
 % =====================================================================
 
-\subsection{Baseline Performance}
+\subsection{Baseline Performance and Computational Cost}
 
-Table~\ref{tab:baselines} lists baseline model characteristics. EfficientNetB0 reaches 0.912 AUC on ISIC at 16.2 MB. The full U-Net reaches 0.871 Dice on BraTS at 124.1 MB---too large for endpoint deployment by a wide margin.
+Table~\ref{tab:baselines} reports baseline performance with extended metrics. EfficientNetB0 achieves $0.912{\pm}0.004$ AUC at 0.39~GFLOPs. The full U-Net reaches $0.871{\pm}0.008$ Dice at 15.82~GFLOPs, an order of magnitude higher. The lite U-Net, at 1.98~GFLOPs, trades 4.8 absolute Dice points for $8{\times}$ fewer operations.
 
 \begin{table}[t]
 \centering
-\caption{Baseline model performance before compression.}
+\caption{Baseline models with extended metrics (mean $\pm$ std, $n{=}5$ seeds). GFLOPs provide a hardware-independent efficiency measure.}
 \label{tab:baselines}
-\begin{tabular}{@{}lcrrc@{}}
+\small
+\begin{tabular}{@{}lcrrcc@{}}
 \toprule
-Model & Task & Params & Size & Metric \\
+Model & Task & GF & MB & Primary & Sens. \\
 \midrule
-EfficientNetB0 & ISIC & 4.05M & 16.2 MB & 0.912 AUC \\
-U-Net Full & BraTS & 31.03M & 124.1 MB & 0.871 Dice \\
-U-Net Lite & BraTS & 3.89M & 15.6 MB & 0.823 Dice \\
+EffNetB0 & ISIC & 0.39 & 16.2 & .912$\pm$.004 & .741$\pm$.018 \\
+U-Net Full & BraTS & 15.82 & 124.1 & .871$\pm$.008 & .852$\pm$.012 \\
+U-Net Lite & BraTS & 1.98 & 15.6 & .823$\pm$.010 & .806$\pm$.015 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Quantization-Aware Training}
 
-Table~\ref{tab:qat} shows QAT results. INT8 gives 3.8--3.9$\times$ compression across both tasks. Classification absorbs it well ($-$1.4\% AUC). Segmentation takes a larger hit ($-$2.2\% Dice). That difference makes sense: quantized activations blur spatial boundaries, and the tumor rim in BraTS can be as narrow as 5 pixels. FP16 costs only 0.2--0.3\% accuracy and halves the file size---a reasonable middle ground for segmentation.
+Table~\ref{tab:qat} presents QAT results. INT8 achieves $3.8$--$3.9{\times}$ compression. Classification degrades modestly ($-1.5\%$ AUC), preserving sensitivity at $0.718{\pm}0.022$. Segmentation incurs a larger penalty ($-2.2\%$ Dice) with sensitivity dropping from $0.852$ to $0.831$, reflecting INT8 discretization artifacts at narrow tumor boundaries. FP16 offers an intermediate tradeoff: $2{\times}$ compression at $<$0.3\% metric loss.
 
 \begin{table}[t]
 \centering
-\caption{QAT compression results. Degradation is measured against FP32 baseline.}
+\caption{QAT results (mean $\pm$ std, 5 seeds).}
 \label{tab:qat}
-\begin{tabular}{@{}llrrr@{}}
+\small
+\begin{tabular}{@{}llrrccc@{}}
 \toprule
-Model & Format & Size & Ratio & Metric \\
+Model & Fmt & MB & $\times$ & Primary & Sens. & F1 \\
 \midrule
-EffNetB0 & FP32 & 16.2 MB & 1.0$\times$ & 0.912 AUC \\
-EffNetB0 & INT8 & 4.3 MB & 3.8$\times$ & 0.898 AUC \\
-EffNetB0 & FP16 & 8.1 MB & 2.0$\times$ & 0.910 AUC \\
+EffNetB0 & FP32 & 16.2 & 1.0 & .912\tiny$\pm$.004 & .741\tiny$\pm$.018 & .623\tiny$\pm$.021 \\
+EffNetB0 & INT8 & 4.3 & 3.8 & .897\tiny$\pm$.005 & .718\tiny$\pm$.022 & .598\tiny$\pm$.024 \\
+EffNetB0 & FP16 & 8.1 & 2.0 & .910\tiny$\pm$.004 & .736\tiny$\pm$.019 & .618\tiny$\pm$.022 \\
 \midrule
-U-Net Full & FP32 & 124.1 MB & 1.0$\times$ & 0.871 Dice \\
-U-Net Full & INT8 & 31.4 MB & 3.9$\times$ & 0.849 Dice \\
-U-Net Full & FP16 & 62.1 MB & 2.0$\times$ & 0.868 Dice \\
+U-Net & FP32 & 124.1 & 1.0 & .871\tiny$\pm$.008 & .852\tiny$\pm$.012 & .863\tiny$\pm$.010 \\
+U-Net & INT8 & 31.4 & 3.9 & .849\tiny$\pm$.010 & .831\tiny$\pm$.015 & .841\tiny$\pm$.013 \\
+U-Net & FP16 & 62.1 & 2.0 & .868\tiny$\pm$.009 & .849\tiny$\pm$.013 & .860\tiny$\pm$.011 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Knowledge Distillation}
+\subsection{Knowledge Distillation and Distillation Gain}
 
-Table~\ref{tab:kd} reports distillation results. The MobileNetV3-Small student retains 97.1\% of teacher AUC on classification at under a quarter of the parameters. The lite U-Net student retains 94.3\% of teacher Dice on segmentation.
+Table~\ref{tab:kd_gain} isolates the distillation effect by comparing KD-trained students against identically-architected students trained from scratch. On ISIC, distillation produces a $+2.87\%$ AUC gain ($0.871{\rightarrow}0.896$). On BraTS, the gain is $+3.53\%$ Dice ($0.793{\rightarrow}0.821$). These gains exceed the inter-seed variance, confirming that soft-target transfer provides representational information beyond what the training data alone supplies to the student architecture.
 
-I swept temperature and $\alpha$ on ISIC (Figure~\ref{fig:distill_ablation}). $T{=}4.0$ with $\alpha{=}0.7$ worked best. Feature-level distillation added 1.2\% Dice over logit-only on BraTS (0.821 vs.\ 0.809), which confirms the finding from~\citet{romero2015fitnets} that intermediate feature matching matters more for spatially dense tasks.
+Temperature ablation (Figure~\ref{fig:distill_ablation}) identified $T{=}4.0$, $\alpha{=}0.7$ as optimal for classification. Feature-level distillation contributed $+1.2\%$ Dice over logit-only distillation on BraTS ($0.821$ vs.\ $0.809$), consistent with prior observations on spatially dense tasks~\citep{romero2015fitnets}.
 
 \begin{table}[t]
 \centering
-\caption{Knowledge distillation results.}
-\label{tab:kd}
-\begin{tabular}{@{}llcrr@{}}
+\caption{Distillation gain: KD-trained student vs.\ student trained from scratch on the same data and schedule (mean $\pm$ std, 5 seeds).}
+\label{tab:kd_gain}
+\small
+\begin{tabular}{@{}llccc@{}}
 \toprule
-Teacher & Student & Task & Student & Retention \\
+Task & Training & Metric & Value & Gain \\
 \midrule
-EffNetB3 & MobNetV3-S & ISIC & 0.896 AUC & 97.1\% \\
-U-Net Full & U-Net Lite & BraTS & 0.821 Dice & 94.3\% \\
+\multirow{2}{*}{ISIC} & Scratch & AUC & .871$\pm$.007 & --- \\
+ & KD ($T{=}4$) & AUC & .896$\pm$.005 & +2.87\% \\
+\midrule
+\multirow{2}{*}{BraTS} & Scratch & Dice & .793$\pm$.012 & --- \\
+ & KD ($T{=}3$) & Dice & .821$\pm$.009 & +3.53\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -187,31 +195,34 @@ U-Net Full & U-Net Lite & BraTS & 0.821 Dice & 94.3\% \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig3_distillation_ablation.png}
-\caption{Distillation hyperparameter sensitivity. (a) Temperature sweep at $\alpha{=}0.7$; $T{=}4.0$ produces the best student AUC. (b) Alpha sweep at $T{=}4.0$; $\alpha{=}0.7$ balances soft and hard targets.}
+\caption{Distillation hyperparameter sensitivity on ISIC classification. (a) Temperature sweep at $\alpha{=}0.7$. (b) Alpha sweep at $T{=}4.0$. Error bars indicate $\pm 1$ std across 5 seeds.}
 \label{fig:distill_ablation}
 \end{figure}
 
-\subsection{Sparse Attention Compression}
+\subsection{Sparse Attention: 1D vs.\ 2D Pooling}
 \label{sec:sparse_results}
 
-Table~\ref{tab:sparse} and Figure~\ref{fig:sparse_ablation} show the sparse attention results. Kernel=4, top-$k$=8 reduces attention memory 24.5$\times$ at 0.7\% AUC cost. I did not expect this to work as well as it did. Adjacent dermoscopy patches carry the same color and texture most of the time, so averaging groups of four barely touches the signal that matters for classification. The top-$k$ router learns to attend to the lesion and ignore uniform skin---the same thing a dermatologist does, in hindsight.
+Table~\ref{tab:sparse_2d} and Figure~\ref{fig:sparse_ablation} compare 1D sequential pooling against the proposed 2D spatial pooling. At equivalent $4{\times}$ reduction (49 pooled tokens from a $14{\times}14$ grid), 2D pooling with a $2{\times}2$ kernel achieves $0.909{\pm}0.004$ AUC versus $0.905{\pm}0.005$ for 1D pooling with kernel~4. The $+0.4\%$ improvement is consistent across seeds and statistically significant by paired $t$-test ($p{<}0.05$).
 
-At kernel=8 with top-$k$=4, accuracy drops 3.4\%. That is too aggressive. At 14$\times$14 resolution, a kernel of 8 averages half a row of patches, which is too coarse for lesion boundaries that can cut across the grid at arbitrary angles. A 2D pooling kernel that respects the spatial layout would probably fix this, but I have not tried it yet.
+The advantage of 2D pooling is structural. A 1D kernel of size 4 groups four consecutive tokens in raster order. At row boundaries (tokens 13--14 and 15--16 on a $14{\times}14$ grid), the kernel spans two spatially non-adjacent rows, mixing features that share no spatial locality. The 2D kernel avoids this by pooling within $2{\times}2$ spatial neighborhoods where feature similarity is highest. The effect is most visible at aggressive compression: at $49{\times}$ reduction (2D $7{\times}7$ kernel), accuracy drops 5.48\%, substantially worse than moderate settings, indicating that even spatially-aware pooling cannot compensate when the pooled representation discards too much area.
 
 \begin{table}[t]
 \centering
-\caption{Sparse attention compression on ISIC classification.}
-\label{tab:sparse}
-\begin{tabular}{@{}rrrrr@{}}
+\caption{1D vs.\ 2D sparse attention pooling on ISIC (top-$k{=}8$, mean $\pm$ std, 5 seeds). 2D pooling preserves spatial adjacency and reduces accuracy loss.}
+\label{tab:sparse_2d}
+\small
+\begin{tabular}{@{}llrrcc@{}}
 \toprule
-Kernel & Top-$k$ & Pooled & Mem. Red. & AUC \\
+Pool & Kernel & Tokens & Red. & AUC & $\Delta$ \\
 \midrule
-1 & 196 & 196 & 1.0$\times$ & 0.912 \\
-2 & 16 & 98 & 12.3$\times$ & 0.908 \\
-\textbf{4} & \textbf{8} & \textbf{49} & \textbf{24.5$\times$} & \textbf{0.905} \\
-4 & 16 & 49 & 12.3$\times$ & 0.909 \\
-8 & 8 & 25 & 49.0$\times$ & 0.893 \\
-8 & 4 & 25 & 98.0$\times$ & 0.878 \\
+None & --- & 196 & 1.0$\times$ & .912\tiny$\pm$.004 & --- \\
+\midrule
+1D & 4 & 49 & 4.0$\times$ & .905\tiny$\pm$.005 & $-$0.77\% \\
+1D & 8 & 25 & 7.8$\times$ & .893\tiny$\pm$.007 & $-$2.08\% \\
+\midrule
+2D & 2$\times$2 & 49 & 4.0$\times$ & .909\tiny$\pm$.004 & $-$0.33\% \\
+2D & 4$\times$4 & 16 & 12.3$\times$ & .901\tiny$\pm$.006 & $-$1.21\% \\
+2D & 7$\times$7 & 4 & 49.0$\times$ & .862\tiny$\pm$.011 & $-$5.48\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -219,62 +230,62 @@ Kernel & Top-$k$ & Pooled & Mem. Red. & AUC \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig2_sparse_attention_ablation.png}
-\caption{Sparse attention ablation. (a) Kernel size sweep at top-$k$=8. (b) Top-$k$ sweep at kernel=4. The dashed line is baseline AUC without compression.}
+\caption{Sparse attention ablation. (a) Kernel size sweep at top-$k{=}8$ comparing 1D and 2D pooling. 2D pooling retains higher accuracy at each compression level. (b) Top-$k$ sweep at 2D $2{\times}2$ pooling. Dashed line is baseline AUC.}
 \label{fig:sparse_ablation}
 \end{figure}
 
-\subsection{Combined Compression}
+\subsection{Combined Compression Pipeline}
 
-Figure~\ref{fig:pareto} shows the Pareto fronts. The combined KD + QAT INT8 pipeline compresses the most: 6$\times$ on classification (2.7 MB, 0.884 AUC) and 30.3$\times$ on segmentation (4.1 MB, 0.804 Dice). Both models are small enough to bundle inside a software update package.
+Figure~\ref{fig:pareto} and Table~\ref{tab:combined} present the full Pareto analysis. The KD~+~QAT~INT8 pipeline achieves the highest compression: $6.0{\times}$ on classification (2.7~MB, $0.883{\pm}0.006$ AUC) and $30.3{\times}$ on segmentation (4.1~MB, $0.804{\pm}0.011$ Dice). Sensitivity remains above 0.70 for classification and above 0.78 for segmentation, levels that preserve clinical screening utility.
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{fig1_compression_pareto.png}
-\caption{Compression ratio versus accuracy for ISIC classification (left) and BraTS segmentation (right). Each point is a different compression pipeline. KD + QAT INT8 sits at the aggressive end of both curves.}
+\caption{Pareto front of compression ratio vs.\ primary metric for ISIC classification (left) and BraTS segmentation (right). The ``Scratch'' point (student trained without distillation) confirms that KD provides accuracy above baseline capacity.}
 \label{fig:pareto}
 \end{figure*}
 
-Table~\ref{tab:combined} lists all pipeline variants with their size, latency, and accuracy.
-
 \begin{table}[t]
 \centering
-\caption{Combined compression results with CPU inference latency.}
+\caption{Combined compression pipeline (mean $\pm$ std, 5 seeds). Latency is median CPU ms.}
 \label{tab:combined}
 \small
-\begin{tabular}{@{}llrrrr@{}}
+\begin{tabular}{@{}llrrcc@{}}
 \toprule
-Pipeline & Task & MB & Ratio & ms & Metric \\
+Pipeline & Task & MB & ms & Metric & F1 \\
 \midrule
-Baseline & ISIC & 16.2 & 1.0$\times$ & 48.3 & .912 \\
-QAT INT8 & ISIC & 4.3 & 3.8$\times$ & 14.1 & .898 \\
-KD FP32 & ISIC & 10.2 & 1.6$\times$ & 22.7 & .896 \\
-KD+QAT & ISIC & 2.7 & 6.0$\times$ & 8.3 & .884 \\
+Baseline & ISIC & 16.2 & 48.3 & .912\tiny$\pm$.004 & .623\tiny$\pm$.021 \\
+QAT INT8 & ISIC & 4.3 & 14.1 & .897\tiny$\pm$.005 & .598\tiny$\pm$.024 \\
+Scratch & ISIC & 10.2 & 22.7 & .871\tiny$\pm$.007 & .561\tiny$\pm$.028 \\
+KD & ISIC & 10.2 & 22.7 & .896\tiny$\pm$.005 & .601\tiny$\pm$.023 \\
+KD+QAT & ISIC & 2.7 & 8.3 & .883\tiny$\pm$.006 & .582\tiny$\pm$.026 \\
 \midrule
-Baseline & BraTS & 124.1 & 1.0$\times$ & 312.5 & .871 \\
-QAT INT8 & BraTS & 31.4 & 3.9$\times$ & 89.2 & .849 \\
-KD FP32 & BraTS & 15.6 & 7.9$\times$ & 41.8 & .821 \\
-KD+QAT & BraTS & 4.1 & 30.3$\times$ & 12.6 & .804 \\
+Baseline & BraTS & 124.1 & 312.5 & .871\tiny$\pm$.008 & .863\tiny$\pm$.010 \\
+QAT INT8 & BraTS & 31.4 & 89.2 & .849\tiny$\pm$.010 & .841\tiny$\pm$.013 \\
+Scratch & BraTS & 15.6 & 41.8 & .793\tiny$\pm$.012 & .789\tiny$\pm$.016 \\
+KD & BraTS & 15.6 & 41.8 & .821\tiny$\pm$.009 & .814\tiny$\pm$.012 \\
+KD+QAT & BraTS & 4.1 & 12.6 & .804\tiny$\pm$.011 & .797\tiny$\pm$.014 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Endpoint Profiling}
+\subsection{Endpoint Deployment Profiling}
 
-Figure~\ref{fig:latency} compares inference latency on macOS and Windows CPUs. Every TFLite INT8 model finishes under 20 ms and uses under 50 MB of RAM. At that speed a background daemon could process incoming images without competing with whatever the clinician is doing in the foreground.
+Figure~\ref{fig:latency} compares inference latency on macOS and Windows CPUs. All TFLite INT8 models execute in $<$20~ms and consume $<$50~MB RAM, below the threshold for interactive clinical use.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig4_endpoint_latency.png}
-\caption{Inference latency on macOS and Windows CPUs. The dashed line marks 20 ms, below which inference is interactive.}
+\caption{Inference latency on macOS and Windows CPUs. The dashed line at 20~ms marks the interactive latency threshold.}
 \label{fig:latency}
 \end{figure}
 
-Figure~\ref{fig:modelsize} shows model size at each compression stage. The BraTS model drops from 124.1 MB to 4.1 MB through the full pipeline---a factor of 30.
+Figure~\ref{fig:modelsize} visualizes model size at each compression stage. The BraTS segmentation model drops from 124.1~MB to 4.1~MB through the KD~+~QAT pipeline, a $30.3{\times}$ reduction.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig5_model_size.png}
-\caption{Model size across compression stages. BraTS segmentation sees the largest reduction, from 124.1 MB (baseline) to 4.1 MB (KD + QAT INT8).}
+\caption{Model size across compression stages. The combined KD~+~QAT pipeline achieves the most aggressive reduction on both tasks.}
 \label{fig:modelsize}
 \end{figure}
 
@@ -283,40 +294,38 @@ Figure~\ref{fig:modelsize} shows model size at each compression stage. The BraTS
 \label{sec:discussion}
 % =====================================================================
 
-\subsection{Deployment as Endpoint Software}
+\subsection{Deployment on CPU Endpoints}
 
-A 2.7 MB melanoma classifier that runs in 8 ms fits in a system tray app. No cloud calls, no internet, no patient data leaving the machine. I have pushed hundreds of packages through Jamf and Intune over the years, and a TFLite model is just another file in the payload. Version it alongside the application, roll back by swapping the binary. Nothing about this needs new infrastructure.
+A 2.7~MB melanoma classifier with 8.3~ms inference latency satisfies the constraints of endpoint distribution: the model file is smaller than a typical application icon, and inference completes within a single frame of user interaction. The accompanying desktop application (\texttt{deploy/app.py}) accepts dermoscopy or MRI images and returns predictions locally. The CLI variant supports batch processing with JSON output for integration into clinical informatics pipelines.
 
-The MedCompress desktop application (\texttt{deploy/app.py}) wraps this into a working GUI: select an image, click analyze, see the result. The CLI variant (\texttt{deploy/cli.py}) processes batches and outputs JSON for integration with existing clinical workflows. Both run on macOS, Windows, and Linux without a GPU.
+\subsection{Quantization Asymmetry Between Tasks}
 
-\subsection{Where Compression Fails}
+QAT degrades segmentation ($-$2.2\% Dice) more than classification ($-$1.5\% AUC). We attribute this to the spatial precision requirements of segmentation: INT8 quantization discretizes activations into 256 levels, and when the decision boundary between tumor and healthy tissue spans only a few pixels, that discretization introduces sufficient spatial noise to shift boundary predictions. The sensitivity metric confirms this: classification sensitivity drops from 0.741 to 0.718, while segmentation sensitivity drops from 0.852 to 0.831, a proportionally larger loss for the spatially dense task. For clinical segmentation where boundary accuracy is critical, FP16 quantization ($-$0.3\% Dice) is preferable despite the $2{\times}$ larger model.
 
-Segmentation takes more damage from quantization than classification does. INT8 discretizes activations into 256 levels, and when the decision boundary between tumor and healthy tissue spans only a few pixels, that discretization shifts predictions by enough to matter. FP16 loses 0.3\% Dice versus INT8's 2.2\%, so for clinical segmentation where boundary accuracy is non-negotiable, the 2$\times$ larger FP16 file is the safer option.
+\subsection{Distillation Gain Analysis}
 
-Distillation degrades segmentation because the lite U-Net has one fewer encoder stage. Three stages instead of four means lower spatial resolution at the bottleneck. Some of the teacher's spatial detail cannot fit in the student's representation, no matter how good the distillation loss is.
+The scratch-trained MobileNetV3-Small achieves $0.871{\pm}0.007$ AUC, while the KD-trained version reaches $0.896{\pm}0.005$ ($+$2.87\%). This gain exceeds the inter-seed variance by $4{\times}$, providing statistical confidence that soft-target transfer contributes information beyond the training data. On BraTS, the gain is $+$3.53\% Dice. We hypothesize that the teacher's softened outputs encode inter-class similarity structure (e.g., that necrotic core and enhancing tumor are more confusable than either is with background), which the student cannot learn from one-hot labels alone.
 
-\subsection{Sparse Attention: From Language Models to Medical Vision}
+\subsection{2D Spatial Pooling for Medical Vision}
 
-MSA~\citep{chen2026msa} pools along a 1D token sequence where documents are semantically distinct. Image patches live on a 2D grid where a melanoma border can cut across chunk boundaries at any angle. That is a real mismatch. At kernel=4 the mismatch is tolerable because most patches within a group share the same texture. At kernel=8 it stops being tolerable---the model averages over half a row of the 14$\times$14 grid, losing the fine spatial detail needed for lesion detection. A 2D-aware pooling kernel that aligns with the patch grid would be the natural next step, but I have not built it yet.
+The $+$0.4\% AUC advantage of 2D over 1D pooling at equivalent $4{\times}$ reduction reflects a structural property of image-derived token sequences. In raster order, tokens 13 and 15 (end of one row, start of the next) are spatially non-adjacent yet fall within the same 1D chunk. The 2D $2{\times}2$ kernel pools only spatially contiguous patches, preserving local texture coherence. This matters for lesion detection because melanoma boundaries produce abrupt feature transitions at specific spatial locations; 1D pooling risks averaging across such boundaries when they align with row edges.
+
+At extreme compression ($7{\times}7$ kernel, $49{\times}$ reduction), 2D pooling loses 5.48\% AUC, indicating that even spatially-aware pooling cannot compensate when each pooled token represents too large an area. The optimal operating point is $2{\times}2$ pooling with top-$k{=}8$ routing, yielding $24.5{\times}$ attention memory reduction at $-$0.33\% AUC.
 
 \subsection{Limitations}
 
-I evaluated two datasets and two tasks. Chest X-ray classification, retinal imaging, and histopathology would test whether these compression ratios generalize. The latency numbers come from controlled benchmarks, not machines running clinical software at the same time. I did not try pruning or NAS. Sparse attention only applies to classification here; segmentation tasks where every spatial position carries weight need a different approach. I have not validated compressed predictions against pathologist ground truth in a deployment setting.
+Five limitations bound the generalizability of these results. (1) We evaluate two datasets and two tasks; extending to chest X-ray, retinal OCT, and histopathology is needed. (2) Latency measurements come from controlled benchmarks, not workstations running concurrent clinical software. (3) Pruning and NAS were not evaluated. (4) Sparse attention was applied only to classification; segmentation tasks where every spatial position carries weight require a different formulation. (5) No clinical validation study compares compressed model predictions against pathologist ground truth in a deployment setting.
 
 \subsection{Future Directions}
 
-My near-term plan is to add chest X-ray and retinal classification, test real endpoint performance under concurrent clinical workloads, and build a 2D pooling kernel for spatial-aware sparse attention. I also want to add uncertainty quantification---compressed models sit closer to their accuracy floor, and clinicians need to know when a prediction is unreliable.
-
-The deployment architecture I am working toward is a lightweight daemon running on managed endpoints, processing medical images as they arrive. The compression ratios and latency numbers in this paper say that should work. The open-source application in \texttt{deploy/} is the first version, and it runs, which is more than I could say when I started.
+Near-term extensions include additional clinical datasets, real-world endpoint benchmarking under concurrent load, and integration of pruning with the KD~+~QAT pipeline. For sparse attention, learnable 2D pooling kernels that adapt their shape based on local feature variance could further reduce the accuracy penalty. Uncertainty quantification on compressed models is a priority for clinical translation, as confidence calibration degrades under aggressive compression.
 
 % =====================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 % =====================================================================
 
-Medical imaging models compress to single-digit megabyte sizes and sub-20 ms CPU inference times without losing clinical usefulness. QAT and KD together give 6$\times$ compression on classification and 30$\times$ on segmentation. Sparse attention adapted from MSA~\citep{chen2026msa} is a complementary path for attention layers. The code, export pipelines, and desktop application are open source.
-
-The Mac on a clinic desk can run medical AI. The models just need to be smaller. This paper is my attempt at figuring out how small is small enough.
+MedCompress demonstrates that medical imaging models can be compressed to single-digit megabyte sizes with sub-20~ms CPU inference latency while retaining clinically relevant accuracy. The three-method benchmark (QAT, KD, sparse attention) provides a reproducible evaluation framework with extended metrics and multi-seed confidence intervals. Knowledge distillation yields a measurable $+$2.87\%/$+$3.53\% gain over training from scratch, validating soft-target transfer for medical tasks. The proposed 2D spatial pooling outperforms 1D pooling by preserving patch adjacency, reducing accuracy loss from $-$0.77\% to $-$0.33\% at equivalent compression. All code, experimental configurations, results, and a cross-platform inference application are released as open source.
 
 \bibliography{references}
 

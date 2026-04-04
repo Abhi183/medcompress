@@ -1,0 +1,35 @@
+# configs/isic_student_scratch.yaml
+# Train MobileNetV3-Small from scratch (no distillation)
+# Used to measure the "distillation gain" by comparing against KD-trained student
+
+task: classification
+dataset: isic
+seed: 42
+
+data:
+  root: data/isic/
+  image_size: 224
+  batch_size: 32
+  val_split: 0.15
+  test_split: 0.15
+  augmentation: true
+
+model:
+  name: mobilenetv3_small
+  num_classes: 1
+  pretrained: imagenet
+  dropout: 0.3
+
+training:
+  epochs: 40
+  optimizer: adam
+  learning_rate: 1.0e-4
+  lr_schedule: cosine
+  loss: binary_crossentropy
+  class_weight: auto
+  early_stopping_patience: 10
+
+output:
+  dir: outputs/isic_student_scratch/
+  save_best: true
+  log_wandb: false

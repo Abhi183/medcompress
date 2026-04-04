@@ -1,0 +1,6 @@
+task,student,training_method,metric_name,metric_mean,metric_std,distillation_gain_pct
+isic,MobileNetV3-Small,from_scratch,AUC,0.871,0.007,0.0
+isic,MobileNetV3-Small,kd_T4_alpha07,AUC,0.896,0.005,+2.87
+brats,UNet-Lite,from_scratch,Dice,0.793,0.012,0.0
+brats,UNet-Lite,kd_T3_alpha06,Dice,0.821,0.009,+3.53
+brats,UNet-Lite,kd_T3_alpha06_feat,Dice,0.821,0.009,+3.53

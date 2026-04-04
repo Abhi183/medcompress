@@ -1,0 +1,6 @@
+model,task,gflops,gmacs,params_m,size_mb
+EfficientNetB0,isic,0.39,0.19,4.05,16.2
+EfficientNetB3,isic,1.83,0.92,12.23,48.9
+MobileNetV3-Small,isic,0.06,0.03,2.54,10.2
+UNet-Full,brats,15.82,7.91,31.03,124.1
+UNet-Lite,brats,1.98,0.99,3.89,15.6
