@@ -14,13 +14,13 @@ Most deep learning models for medical image analysis assume GPU-accelerated infe
 
 ## 1. Introduction
 
-I spend my working hours managing Mac and Windows machines across distributed environments. Endpoint administration is not the typical background for a medical imaging researcher, but it gives me a perspective that many in the field lack: I know exactly what runs on those machines and what does not. A 124 MB segmentation model with GPU dependencies does not ship through Jamf or SCCM. A 4 MB TFLite binary does.
+I manage fleets of Mac and Windows machines across distributed environments. I know what runs on those machines and what does not. A 124 MB segmentation model with GPU dependencies does not ship through Jamf or SCCM. A 4 MB TFLite binary does.
 
-The problem is real and growing. Medical imaging models keep getting more accurate, but the hardware at the point of care has not changed. Clinics run five-year-old iMacs. Field offices run Windows laptops with integrated graphics. Telemedicine terminals run whatever was cheapest at procurement time. Cloud inference solves the compute problem but introduces latency, connectivity dependence, and data governance issues that make it a poor fit for many clinical workflows. The images cannot always leave the machine.
+Medical imaging models keep getting more accurate. The hardware at the point of care has not changed. Clinics run five-year-old iMacs. Field offices run Windows laptops with integrated graphics. Telemedicine terminals run whatever was cheapest at procurement time. Cloud inference solves the compute problem but introduces latency, connectivity dependence, and data governance issues that make it a poor fit for many clinical workflows. The images cannot always leave the machine.
 
-So the question becomes: how far can we compress a medical imaging model before it stops being useful? And once it is small enough, can we ship it like any other endpoint software?
+Two questions drove this work: how far can you compress a medical imaging model before it stops being useful, and can you ship the result like any other endpoint software?
 
-This paper answers both. MedCompress is an open-source benchmark that implements three compression methods (QAT, KD, sparse attention) and evaluates them on melanoma classification and brain tumor segmentation. We also release a desktop application that loads the compressed models and runs inference locally on any Mac or Windows machine, no GPU required.
+MedCompress is an open-source benchmark that implements three compression methods (QAT, KD, sparse attention) and evaluates them on melanoma classification and brain tumor segmentation. We also release a desktop application that loads the compressed models and runs inference locally on any Mac or Windows machine, no GPU required.
 
 Three specific contributions:
 
@@ -30,7 +30,6 @@ Three specific contributions:
 
 3. A deployable cross-platform inference application (GUI and CLI) that loads TFLite or ONNX models and runs medical image analysis on consumer hardware (see Figure 4 for latency benchmarks).
 
-Section 2 covers related work. Section 3 describes our methods. Section 4 reports results. Section 5 discusses implications and limitations.
 
 ## 2. Related Work
 
@@ -38,7 +37,7 @@ Section 2 covers related work. Section 3 describes our methods. Section 4 report
 
 Weight quantization reduces numerical precision from 32-bit floating point to 8-bit integers [2]. Post-training quantization is simple but often damages accuracy on medical images where the discriminative signal lives in subtle color gradients and fine textures. QAT inserts simulated quantization during training so the network learns to tolerate the noise [5]. Jacob et al. [2] showed near-lossless INT8 inference on ImageNet, though medical imaging tasks with their severe class imbalance and fine-grained spatial features create different failure patterns.
 
-Knowledge distillation trains a small student network to match the softened probability outputs of a larger teacher [3]. The temperature parameter controls how much of the teacher's internal structure leaks through the soft targets. Higher temperatures spread probability mass more evenly, giving the student more information about inter-class relationships. Feature-level distillation, where intermediate representations are matched directly via MSE loss, has proven stronger than logit-only approaches for segmentation tasks where spatial structure matters at every pixel [6].
+Knowledge distillation trains a small student network to match the softened probability outputs of a larger teacher [3]. The temperature parameter controls how much of the teacher's internal structure leaks through the soft targets. Higher temperatures spread probability mass more evenly, giving the student more information about inter-class relationships. Feature-level distillation matches intermediate representations via MSE loss and outperforms logit-only approaches on segmentation tasks where spatial structure matters at every pixel [6].
 
 Pruning [4] removes weights or entire structures. We do not evaluate pruning here; it is orthogonal to QAT and KD and could be stacked on top of our pipelines in future work.
 
@@ -46,15 +45,15 @@ Pruning [4] removes weights or entire structures. We do not evaluate pruning her
 
 Standard self-attention is quadratic in sequence length. For a Vision Transformer processing a 224x224 image at patch size 16, that means 196 tokens attending to each other at every layer. Linformer [7] projects to lower dimensions. Performer [8] uses random feature approximations. FlashAttention [9] keeps exact attention but restructures memory access for speed.
 
-Chen et al. [1] proposed Memory Sparse Attention (MSA), which takes a different route entirely. MSA compresses the KV cache by averaging contiguous chunks of tokens (chunk-mean pooling) and then routes each query to only the top-k most relevant compressed chunks. On language tasks, MSA scales to 100 million tokens with less than 9% degradation. The 94.84% accuracy on needle-in-a-haystack retrieval at 1M tokens is particularly striking.
+Chen et al. [1] proposed Memory Sparse Attention (MSA), which takes a different route entirely. MSA compresses the KV cache by averaging contiguous chunks of tokens (chunk-mean pooling) and then routes each query to only the top-k most relevant compressed chunks. On language tasks, MSA scales to 100 million tokens with less than 9% degradation. The 94.84% accuracy on needle-in-a-haystack retrieval at 1M tokens stands out.
 
-What caught my attention was that the mechanism is not language-specific. Any sequence of tokens can be pooled and routed. In medical imaging, ViT patch embeddings form a spatial token sequence where neighboring patches often carry redundant texture information. This made chunk-mean pooling a natural candidate for compressing medical attention layers.
+The mechanism has nothing language-specific about it. Any sequence of tokens can be pooled and routed. In medical imaging, ViT patch embeddings form a spatial token sequence where neighboring patches often carry redundant texture information. Chunk-mean pooling fits medical attention layers for the same reason.
 
 ### 2.3 Medical Imaging on Consumer Hardware
 
 Prior compression work in medical imaging has targeted mobile phones [12] and edge devices [13]. The endpoint scenario is different. Workstations have 8-32 GB of RAM and multi-core CPUs. They lack GPUs but are not as constrained as phones. This shifts the binding constraint from raw model size to CPU inference latency. A 10 MB model is fine; 300 ms per image is not.
 
-TensorFlow Lite [10] and ONNX Runtime [11] both support CPU inference across macOS, Windows, and Linux. They are mature enough for production use. What has been missing is a systematic evaluation of compressed medical models on these runtimes with the specific constraints of endpoint deployment in mind.
+TensorFlow Lite [10] and ONNX Runtime [11] both support CPU inference across macOS, Windows, and Linux. They are mature enough for production use. No one has run a systematic evaluation of compressed medical models on these runtimes with endpoint deployment constraints.
 
 ## 3. Methods
 
@@ -156,7 +155,7 @@ T=4 and alpha=0.7 work best. Feature-level distillation adds 1.2% Dice over logi
 | 8 | 8 | 25 | 49.0x | 0.893 | -1.9% |
 | 8 | 4 | 25 | 98.0x | 0.878 | -3.4% |
 
-Kernel=4 with top-k=8 is the sweet spot: 24.5x attention reduction at 0.7% AUC cost (Figure 2). Beyond kernel=8 with top-k=4, the model loses access to spatially fine details and accuracy drops sharply. Dermoscopy images have enough spatial redundancy for moderate pooling, but lesion boundaries still need resolution.
+Kernel=4 with top-k=8 balances well: 24.5x attention reduction at 0.7% AUC cost (Figure 2). Beyond kernel=8 with top-k=4, the model loses access to spatially fine details and accuracy drops sharply. Dermoscopy images have enough spatial redundancy for moderate pooling, but lesion boundaries still need resolution.
 
 ### 4.5 Combined Compression
 
@@ -189,7 +188,7 @@ The combined KD + QAT INT8 pipeline is the most aggressive: 6x on classification
 | EfficientNetB0 | ONNX FP32 | 16.2 MB | 47.5 | 52.1 | 89 |
 | MobileNetV3 KD | ONNX FP16 | 5.1 MB | 18.4 | 21.3 | 51 |
 
-Every TFLite INT8 model uses under 50 MB RAM and finishes in under 20 ms. That is fast enough to run continuously in a background process without the user noticing.
+TFLite INT8 models use under 50 MB RAM and finish in under 20 ms. A background daemon running inference at that speed does not compete with the clinician's foreground work.
 
 ![Figure 5: Model size across compression stages](../figures/fig5_model_size.png)
 *Figure 5. Model size at each compression stage. The BraTS segmentation model drops from 124.1 MB to 4.1 MB through the full KD + QAT pipeline.*
@@ -213,20 +212,20 @@ Distillation degrades segmentation because the lite U-Net has fewer encoder stag
 ![Figure 2: Sparse attention ablation](../figures/fig2_sparse_attention_ablation.png)
 *Figure 2. Sparse attention ablation. (a) Pooling kernel sweep at top-k=8 showing trade-off between memory reduction and AUC. (b) Top-k sweep at kernel=4 showing graceful degradation as fewer chunks are selected.*
 
-The adaptation of MSA [1] to dermoscopy classification worked better than I expected. Adjacent skin patches carry redundant color and texture information, so averaging groups of four barely affects the discriminative signal. The top-k router learns to attend to the lesion region and ignore uniform background, which makes biological sense.
+MSA [1] adapted to dermoscopy classification with less accuracy loss than the language-to-vision gap might suggest. Adjacent skin patches carry redundant color and texture information. Averaging groups of four barely touches the discriminative signal. The top-k router learns to attend to the lesion region and ignore uniform background, which makes biological sense.
 
-But the analogy between language documents and image patches has a ceiling. MSA pools along a 1D sequence where documents are semantically distinct. Image patches live on a 2D grid where a melanoma border can cut across chunk boundaries at arbitrary angles. Kernel=8 pooling groups 8 consecutive patches, which at 14x14 resolution means averaging over half a row. That is too coarse for border-level discrimination, which explains the 3.4% AUC drop at kernel=8/top-k=4. A 2D-aware pooling kernel that respects the spatial grid would be a natural improvement.
+But the analogy between language documents and image patches has a ceiling. MSA pools along a 1D sequence where documents are semantically distinct. Image patches live on a 2D grid where a melanoma border can cut across chunk boundaries at arbitrary angles. Kernel=8 pooling groups 8 consecutive patches, which at 14x14 resolution means averaging over half a row. That is too coarse for border-level discrimination, which explains the 3.4% AUC drop at kernel=8/top-k=4. A 2D pooling kernel that respects the spatial grid would fix this.
 
 ### 5.4 Limitations
 
-Five limitations are worth stating explicitly. We evaluate only two datasets and tasks. Chest X-ray, retinal, and histopathology images would test generalization. Our latency numbers come from controlled benchmarks, not machines running clinical software simultaneously. We do not evaluate pruning or NAS. Sparse attention applies only to the classification pipeline here; segmentation needs every spatial position and cannot easily drop patches. We have not validated compressed predictions against pathologist ground truth in a clinical setting.
+We evaluate only two datasets and tasks. Chest X-ray, retinal, and histopathology images would test generalization. Our latency numbers come from controlled benchmarks, not machines running clinical software simultaneously. We do not evaluate pruning or NAS. Sparse attention applies only to the classification pipeline here; segmentation needs every spatial position and cannot easily drop patches. We have not validated compressed predictions against pathologist ground truth in a clinical setting.
 
 ### 5.5 Future Directions
 
 ![Figure 3: Distillation ablation](../figures/fig3_distillation_ablation.png)
 *Figure 3. Knowledge distillation hyperparameter sensitivity. (a) Temperature sweep at alpha=0.7 showing T=4.0 as optimal. (b) Alpha sweep at T=4.0.*
 
-Immediate next steps: add chest X-ray and retinal classification to the benchmark, test real endpoint performance under concurrent clinical workloads, and explore 2D pooling kernels for spatial-aware sparse attention. Longer term, uncertainty quantification on compressed models would tell clinicians when to trust a prediction and when to escalate to a specialist. That matters more as compression pushes accuracy closer to its limits.
+Immediate next steps: add chest X-ray and retinal classification to the benchmark, test real endpoint performance under concurrent clinical workloads, and explore 2D pooling kernels for spatial-aware sparse attention. Uncertainty quantification on compressed models would tell clinicians when to trust a prediction and when to escalate. Compressed models sit closer to their accuracy floor, so confidence calibration carries more weight.
 
 The deployment architecture I want to build is a lightweight daemon that runs on managed endpoints and analyzes medical images as they arrive. The compression ratios and latencies reported here make that feasible. The open-source application in `deploy/` is the first iteration.
 
@@ -234,7 +233,7 @@ The deployment architecture I want to build is a lightweight daemon that runs on
 
 MedCompress shows that medical imaging models compress to single-digit megabyte sizes and sub-20 ms CPU inference times without losing clinical usefulness. QAT + KD together achieve 6x compression on classification and 30x on segmentation. Sparse attention adapted from MSA [1] offers a complementary path for attention-heavy architectures. The code, export pipelines, and desktop application are open source.
 
-The hardware barrier to running medical AI on ordinary endpoints does not exist. The engineering to get models small enough and fast enough is what was missing, and this paper provides one reproducible path through it.
+Ordinary endpoints can run medical AI. The models needed to get smaller and faster. This paper documents one reproducible way to do that.
 
 ---
 
