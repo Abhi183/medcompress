@@ -1,0 +1,52 @@
+# configs/isic_capacity_study.yaml
+# Train multiple student architectures from scratch AND with KD
+# to separate capacity ceiling from distillation contribution.
+#
+# If larger students show smaller KD gain, that proves the small
+# student's gain is partly compensating for capacity limitations.
+# If the gain is constant across sizes, distillation provides
+# genuine representational information regardless of capacity.
+
+task: classification
+dataset: isic
+seeds: [42, 123, 456, 789, 1024]
+
+students:
+  - name: mobilenetv3_small
+    params_m: 2.54
+    gflops: 0.06
+    training:
+      epochs: 25
+      lr: 1.0e-4
+
+  - name: mobilenetv3_large
+    params_m: 5.48
+    gflops: 0.22
+    training:
+      epochs: 25
+      lr: 1.0e-4
+
+  - name: efficientnetb1
+    params_m: 7.79
+    gflops: 0.70
+    training:
+      epochs: 25
+      lr: 1.0e-4
+
+teacher:
+  name: efficientnetb3
+  params_m: 12.23
+  gflops: 1.83
+
+distillation:
+  temperature: 4.0
+  alpha: 0.7
+
+# Expected results pattern:
+# If distillation gain DECREASES with student size:
+#   -> Gain is capacity compensation (smaller student needs more help)
+#   -> Frame as: "KD is most valuable for the smallest architectures"
+#
+# If distillation gain is CONSTANT across sizes:
+#   -> Gain is genuine knowledge transfer
+#   -> Frame as: "soft-target information is independent of capacity"
