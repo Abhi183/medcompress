@@ -12,9 +12,11 @@ MedCompress evaluates quantization-aware training (QAT), knowledge distillation 
 
 ## Desktop Application
 
-![MedCompress Desktop App](screenshots/app_demo.png)
+| Single Image Analysis | Batch Testing (5 images) |
+|:---:|:---:|
+| ![Single](screenshots/app_demo.png) | ![Batch](screenshots/app_batch_demo.png) |
 
-The MedCompress desktop app runs compressed medical imaging models locally on any Mac, Windows, or Linux machine. No GPU, no cloud, no internet required. Load a TFLite or ONNX model, open a dermoscopy or MRI image, and get a classification or segmentation result in under 10 ms on CPU.
+The MedCompress desktop app runs compressed medical imaging models locally on any Mac, Windows, or Linux machine. No GPU, no cloud, no internet required. The **Run All Tests** mode cycles through multiple dermoscopy images and reports per-image predictions with confidence scores and latency, reducing single-image evaluation bias.
 
 ---
 
