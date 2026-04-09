@@ -193,31 +193,6 @@ pyinstaller --onefile --windowed deploy/app.py --name MedCompress
 # Produces dist/MedCompress.app (macOS) or dist/MedCompress.exe (Windows)
 ```
 
-## Citation
-
-If you use MedCompress in your research, please cite:
-
-```bibtex
-@misc{shekhar2026medcompress,
-    title={MedCompress: Compressing Medical Imaging Models for Cross-Platform Endpoint Deployment},
-    author={Abhishek Shekhar},
-    year={2026},
-    url={https://github.com/Abhi183/medcompress}
-}
-```
-
-This work builds on Memory Sparse Attention:
-
-```bibtex
-@misc{chen2026msa,
-    title={MSA: Memory Sparse Attention for Efficient End-to-End Memory Model Scaling to 100M Tokens},
-    author={Yu Chen and Runkai Chen and Sheng Yi and Xinda Zhao and Xiaohong Li and Shun Fan and Jiangning Zhang and Yabiao Wang},
-    year={2026},
-    eprint={2603.23516},
-    archivePrefix={arXiv}
-}
-```
-
 ## License
 
 MIT
